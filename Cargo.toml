@@ -1,0 +1,64 @@
+[workspace]
+members = [
+    "veritas-core",
+    "veritas-cli",
+    "veritas-wasm",
+    "veritas-server",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ArthurDEV44/veritas-q"
+
+[workspace.dependencies]
+# Post-quantum cryptography
+pqcrypto-mldsa = "0.1"
+pqcrypto-traits = "0.3"
+
+# Async runtime and HTTP client
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ciborium = "0.2"  # CBOR serialization
+
+# Hashing
+sha3 = "0.10"
+
+# Utilities
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+geohash = "0.13"
+hex = "0.4"
+async-trait = "0.1"
+
+# CLI dependencies
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+colored = "3"
+
+# Solana dependencies
+solana-sdk = "2"
+solana-client = "2"
+spl-memo = "5"
+
+# Web server dependencies
+axum = { version = "0.8", features = ["multipart"] }
+tower-http = { version = "0.6", features = ["cors", "limit"] }
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+
+# Wasm dependencies
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+console_error_panic_hook = "0.1"
+
+# Internal crates
+veritas-core = { path = "veritas-core", default-features = true }
