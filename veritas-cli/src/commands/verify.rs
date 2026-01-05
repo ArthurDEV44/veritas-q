@@ -12,15 +12,13 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
     let seal_path = seal_path.unwrap_or_else(|| {
         file.with_extension(format!(
             "{}.veritas",
-            file.extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("bin")
+            file.extension().and_then(|e| e.to_str()).unwrap_or("bin")
         ))
     });
 
     // Read the original file
-    let content = std::fs::read(&file)
-        .with_context(|| format!("Failed to read file: {}", file.display()))?;
+    let content =
+        std::fs::read(&file).with_context(|| format!("Failed to read file: {}", file.display()))?;
 
     println!(
         "{}",
@@ -50,9 +48,7 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
 
     // Verify signature
     println!("{}", "🔐 Verifying ML-DSA signature...".dimmed());
-    let signature_valid = seal
-        .verify()
-        .context("Signature verification failed")?;
+    let signature_valid = seal.verify().context("Signature verification failed")?;
 
     // Verify content hash matches
     let hash_matches = seal.content_hash.crypto_hash == current_hash.crypto_hash;
@@ -61,16 +57,19 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
 
     if signature_valid && hash_matches {
         println!("{}", "╔════════════════════════════════════════╗".green());
-        println!("{}", "║         ✅ AUTHENTIC                   ║".green().bold());
+        println!(
+            "{}",
+            "║         ✅ AUTHENTIC                   ║".green().bold()
+        );
         println!("{}", "╚════════════════════════════════════════╝".green());
         println!();
-        println!("   {} {}", "Signature:".dimmed(), "Valid (ML-DSA-65)".green());
-        println!("   {} {}", "Content:".dimmed(), "Matches original".green());
         println!(
-            "   {} {:?}",
-            "QRNG source:".dimmed(),
-            seal.qrng_source
+            "   {} {}",
+            "Signature:".dimmed(),
+            "Valid (ML-DSA-65)".green()
         );
+        println!("   {} {}", "Content:".dimmed(), "Matches original".green());
+        println!("   {} {:?}", "QRNG source:".dimmed(), seal.qrng_source);
         println!(
             "   {} {}",
             "Sealed at:".dimmed(),
@@ -79,7 +78,10 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
         Ok(())
     } else {
         println!("{}", "╔════════════════════════════════════════╗".red());
-        println!("{}", "║         ❌ TAMPERED                    ║".red().bold());
+        println!(
+            "{}",
+            "║         ❌ TAMPERED                    ║".red().bold()
+        );
         println!("{}", "╚════════════════════════════════════════╝".red());
         println!();
 

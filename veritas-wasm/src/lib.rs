@@ -4,8 +4,8 @@
 //! directly in the browser without sending files to a server.
 
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
 use veritas_core::{ContentHash, VeritasSeal};
+use wasm_bindgen::prelude::*;
 
 /// Initialize panic hook for better error messages in browser console.
 #[wasm_bindgen(start)]
@@ -60,9 +60,8 @@ pub fn verify_file_wasm(file_bytes: &[u8], seal_bytes: &[u8]) -> String {
                 media_type: String::new(),
                 error: Some(e),
             };
-            serde_json::to_string(&result).unwrap_or_else(|_| {
-                r#"{"valid":false,"error":"Unknown error"}"#.to_string()
-            })
+            serde_json::to_string(&result)
+                .unwrap_or_else(|_| r#"{"valid":false,"error":"Unknown error"}"#.to_string())
         }
     }
 }
@@ -80,7 +79,9 @@ fn verify_internal(file_bytes: &[u8], seal_bytes: &[u8]) -> Result<VerificationR
     let content_matches = seal.content_hash.crypto_hash == actual_hash.crypto_hash;
 
     // Verify the ML-DSA signature
-    let signature_valid = seal.verify().map_err(|e| format!("Verification error: {}", e))?;
+    let signature_valid = seal
+        .verify()
+        .map_err(|e| format!("Verification error: {}", e))?;
 
     // Format timestamp
     let timestamp = format_timestamp(seal.capture_timestamp_utc);
@@ -95,8 +96,8 @@ fn verify_internal(file_bytes: &[u8], seal_bytes: &[u8]) -> Result<VerificationR
         valid: signature_valid && content_matches,
         content_matches,
         timestamp,
-        content_hash: hex::encode(&actual_hash.crypto_hash),
-        expected_hash: hex::encode(&seal.content_hash.crypto_hash),
+        content_hash: hex::encode(actual_hash.crypto_hash),
+        expected_hash: hex::encode(seal.content_hash.crypto_hash),
         qrng_source,
         media_type,
         error: None,

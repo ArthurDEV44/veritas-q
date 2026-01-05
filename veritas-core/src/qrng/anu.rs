@@ -82,23 +82,15 @@ impl Default for AnuQrng {
 #[async_trait]
 impl QuantumEntropySource for AnuQrng {
     async fn get_entropy(&self) -> Result<[u8; 32]> {
-        let response = self
-            .client
-            .get(ANU_API_URL)
-            .send()
-            .await
-            .map_err(|e| {
-                if e.is_timeout() {
-                    VeritasError::QrngError(format!(
-                        "ANU QRNG timeout after {:?}",
-                        self.timeout
-                    ))
-                } else if e.is_connect() {
-                    VeritasError::QrngError("Failed to connect to ANU QRNG API".into())
-                } else {
-                    VeritasError::QrngError(format!("ANU QRNG request failed: {}", e))
-                }
-            })?;
+        let response = self.client.get(ANU_API_URL).send().await.map_err(|e| {
+            if e.is_timeout() {
+                VeritasError::QrngError(format!("ANU QRNG timeout after {:?}", self.timeout))
+            } else if e.is_connect() {
+                VeritasError::QrngError("Failed to connect to ANU QRNG API".into())
+            } else {
+                VeritasError::QrngError(format!("ANU QRNG request failed: {}", e))
+            }
+        })?;
 
         if !response.status().is_success() {
             return Err(VeritasError::QrngError(format!(

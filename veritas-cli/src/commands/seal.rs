@@ -1,6 +1,6 @@
 //! Seal command implementation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -9,7 +9,7 @@ use veritas_core::{
 };
 
 /// Detect media type from file extension.
-fn detect_media_type(path: &PathBuf) -> MediaType {
+fn detect_media_type(path: &Path) -> MediaType {
     match path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -26,8 +26,8 @@ fn detect_media_type(path: &PathBuf) -> MediaType {
 /// Execute the seal command.
 pub async fn execute(file: PathBuf, format: String, use_mock: bool) -> Result<()> {
     // Read the file content
-    let content = std::fs::read(&file)
-        .with_context(|| format!("Failed to read file: {}", file.display()))?;
+    let content =
+        std::fs::read(&file).with_context(|| format!("Failed to read file: {}", file.display()))?;
 
     println!(
         "{}",
@@ -63,26 +63,24 @@ pub async fn execute(file: PathBuf, format: String, use_mock: bool) -> Result<()
     // Determine output path
     let seal_path = file.with_extension(format!(
         "{}.veritas",
-        file.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("bin")
+        file.extension().and_then(|e| e.to_str()).unwrap_or("bin")
     ));
 
     // Serialize and save
     match format.as_str() {
         "json" => {
-            let json = serde_json::to_string_pretty(&seal)
-                .context("Failed to serialize seal to JSON")?;
+            let json =
+                serde_json::to_string_pretty(&seal).context("Failed to serialize seal to JSON")?;
             std::fs::write(&seal_path, json).context("Failed to write seal file")?;
         }
-        "cbor" | _ => {
+        _ => {
             let cbor = seal.to_cbor().context("Failed to serialize seal to CBOR")?;
             std::fs::write(&seal_path, cbor).context("Failed to write seal file")?;
         }
     }
 
     // Print success message
-    let content_hash = hex::encode(&seal.content_hash.crypto_hash);
+    let content_hash = hex::encode(seal.content_hash.crypto_hash);
     let qrng_source = format!("{:?}", seal.qrng_source);
 
     println!();
@@ -101,7 +99,10 @@ pub async fn execute(file: PathBuf, format: String, use_mock: bool) -> Result<()
 }
 
 async fn create_seal_with_anu(content: Vec<u8>, media_type: MediaType) -> Result<VeritasSeal> {
-    println!("{}", "🌐 Fetching quantum entropy from ANU QRNG...".dimmed());
+    println!(
+        "{}",
+        "🌐 Fetching quantum entropy from ANU QRNG...".dimmed()
+    );
     let qrng = AnuQrng::new().context("Failed to create ANU QRNG client")?;
     create_seal(content, media_type, &qrng).await
 }

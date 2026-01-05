@@ -6,6 +6,8 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
 use solana_client::rpc_client::RpcClient;
+#[allow(deprecated)]
+use solana_sdk::system_instruction;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     message::Message,
@@ -14,7 +16,6 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
-use solana_sdk::system_instruction;
 use spl_memo::build_memo;
 use veritas_core::VeritasSeal;
 
@@ -47,18 +48,12 @@ pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
 
     // Compute the seal hash (hash of the content hash + signature prefix)
     let seal_hash = compute_seal_hash(&seal);
-    println!(
-        "{}",
-        format!("📝 Seal hash: {}", &seal_hash[..16]).dimmed()
-    );
+    println!("{}", format!("📝 Seal hash: {}", &seal_hash[..16]).dimmed());
 
     // Generate a burner keypair
     println!("{}", "🔑 Generating burner keypair...".dimmed());
     let payer = Keypair::new();
-    println!(
-        "{}",
-        format!("   Pubkey: {}", payer.pubkey()).dimmed()
-    );
+    println!("{}", format!("   Pubkey: {}", payer.pubkey()).dimmed());
 
     // Connect to Devnet
     println!("{}", "🌐 Connecting to Solana Devnet...".dimmed());
@@ -100,10 +95,7 @@ pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
         .context("Failed to send transaction")?;
 
     let tx_id = signature.to_string();
-    let explorer_url = format!(
-        "https://explorer.solana.com/tx/{}?cluster=devnet",
-        tx_id
-    );
+    let explorer_url = format!("https://explorer.solana.com/tx/{}?cluster=devnet", tx_id);
 
     // Success!
     println!();
@@ -117,10 +109,7 @@ pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
     if update_seal {
         update_seal_with_anchor(&seal_path, &seal, &tx_id)?;
         println!();
-        println!(
-            "{}",
-            format!("📝 Updated seal file with blockchain anchor").green()
-        );
+        println!("{}", "📝 Updated seal file with blockchain anchor".green());
     }
 
     Ok(())
@@ -131,7 +120,7 @@ fn compute_seal_hash(seal: &VeritasSeal) -> String {
     use sha3::{Digest, Sha3_256};
 
     let mut hasher = Sha3_256::new();
-    hasher.update(&seal.content_hash.crypto_hash);
+    hasher.update(seal.content_hash.crypto_hash);
     hasher.update(&seal.signature[..std::cmp::min(seal.signature.len(), 32)]);
     let result = hasher.finalize();
 
@@ -139,11 +128,7 @@ fn compute_seal_hash(seal: &VeritasSeal) -> String {
 }
 
 /// Request airdrop with retries.
-fn request_airdrop_with_retry(
-    client: &RpcClient,
-    pubkey: &Pubkey,
-    sol_amount: u64,
-) -> Result<()> {
+fn request_airdrop_with_retry(client: &RpcClient, pubkey: &Pubkey, sol_amount: u64) -> Result<()> {
     let lamports = sol_amount * LAMPORTS_PER_SOL;
 
     for attempt in 1..=AIRDROP_RETRIES {
@@ -178,7 +163,11 @@ fn wait_for_balance(client: &RpcClient, pubkey: &Pubkey, min_lamports: u64) -> R
             Ok(balance) if balance >= min_lamports => {
                 println!(
                     "{}",
-                    format!("   Balance: {} SOL", balance as f64 / LAMPORTS_PER_SOL as f64).dimmed()
+                    format!(
+                        "   Balance: {} SOL",
+                        balance as f64 / LAMPORTS_PER_SOL as f64
+                    )
+                    .dimmed()
                 );
                 return Ok(());
             }
@@ -192,11 +181,7 @@ fn wait_for_balance(client: &RpcClient, pubkey: &Pubkey, min_lamports: u64) -> R
 }
 
 /// Update the seal file with the blockchain anchor.
-fn update_seal_with_anchor(
-    seal_path: &PathBuf,
-    seal: &VeritasSeal,
-    tx_id: &str,
-) -> Result<()> {
+fn update_seal_with_anchor(seal_path: &PathBuf, seal: &VeritasSeal, tx_id: &str) -> Result<()> {
     use veritas_core::BlockchainAnchor;
 
     // Create updated seal with anchor

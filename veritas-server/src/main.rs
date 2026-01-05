@@ -16,9 +16,7 @@ use serde::Serialize;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
-use veritas_core::{
-    generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder, VeritasSeal,
-};
+use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder, VeritasSeal};
 
 /// Response for successful seal creation
 #[derive(Serialize)]
@@ -80,10 +78,16 @@ async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>, Ap
 
         match name.as_str() {
             "file" => {
-                file_data = Some(field.bytes().await.map_err(|e| ApiError {
-                    status: StatusCode::BAD_REQUEST,
-                    message: format!("Failed to read file: {}", e),
-                })?.to_vec());
+                file_data = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| ApiError {
+                            status: StatusCode::BAD_REQUEST,
+                            message: format!("Failed to read file: {}", e),
+                        })?
+                        .to_vec(),
+                );
             }
             "media_type" => {
                 let value = field.text().await.unwrap_or_default();
@@ -173,10 +177,16 @@ async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyResponse>
 
         match name.as_str() {
             "file" => {
-                file_data = Some(field.bytes().await.map_err(|e| ApiError {
-                    status: StatusCode::BAD_REQUEST,
-                    message: format!("Failed to read file: {}", e),
-                })?.to_vec());
+                file_data = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| ApiError {
+                            status: StatusCode::BAD_REQUEST,
+                            message: format!("Failed to read file: {}", e),
+                        })?
+                        .to_vec(),
+                );
             }
             "seal_data" => {
                 seal_data = Some(field.text().await.map_err(|e| ApiError {
@@ -221,18 +231,27 @@ async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyResponse>
     let content_matches = content_hash.crypto_hash == seal.content_hash.crypto_hash;
 
     let (authentic, details) = if signature_valid && content_matches {
-        (true, format!(
-            "Seal valid. Media type: {:?}, QRNG source: {:?}, Captured: {}",
-            seal.media_type,
-            seal.qrng_source,
-            chrono::DateTime::from_timestamp_millis(seal.capture_timestamp_utc as i64)
-                .map(|dt| dt.to_rfc3339())
-                .unwrap_or_else(|| "unknown".to_string())
-        ))
+        (
+            true,
+            format!(
+                "Seal valid. Media type: {:?}, QRNG source: {:?}, Captured: {}",
+                seal.media_type,
+                seal.qrng_source,
+                chrono::DateTime::from_timestamp_millis(seal.capture_timestamp_utc as i64)
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ),
+        )
     } else if !signature_valid {
-        (false, "Signature verification failed - seal may be tampered".into())
+        (
+            false,
+            "Signature verification failed - seal may be tampered".into(),
+        )
     } else {
-        (false, "Content hash mismatch - file has been modified since sealing".into())
+        (
+            false,
+            "Content hash mismatch - file has been modified since sealing".into(),
+        )
     };
 
     Ok(Json(VerifyResponse { authentic, details }))
@@ -302,7 +321,9 @@ mod tests {
 
         // File field
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n");
+        body.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n",
+        );
         body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
         body.extend_from_slice(content);
         body.extend_from_slice(b"\r\n");
@@ -333,7 +354,9 @@ mod tests {
 
         // File field
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n");
+        body.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n",
+        );
         body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
         body.extend_from_slice(content);
         body.extend_from_slice(b"\r\n");
@@ -367,7 +390,9 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         assert_eq!(&body[..], b"OK");
     }
 
@@ -391,7 +416,9 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
         assert!(json.get("seal_id").is_some());
@@ -429,7 +456,9 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let seal_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
         let seal_data = seal_response["seal_data"].as_str().unwrap();
 
@@ -451,11 +480,16 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let verify_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
         assert_eq!(verify_response["authentic"], true);
-        assert!(verify_response["details"].as_str().unwrap().contains("Seal valid"));
+        assert!(verify_response["details"]
+            .as_str()
+            .unwrap()
+            .contains("Seal valid"));
     }
 
     #[tokio::test]
@@ -479,7 +513,9 @@ mod tests {
             .await
             .unwrap();
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let seal_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
         let seal_data = seal_response["seal_data"].as_str().unwrap();
 
@@ -501,11 +537,16 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let verify_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
         assert_eq!(verify_response["authentic"], false);
-        assert!(verify_response["details"].as_str().unwrap().contains("Content hash mismatch"));
+        assert!(verify_response["details"]
+            .as_str()
+            .unwrap()
+            .contains("Content hash mismatch"));
     }
 
     #[tokio::test]
@@ -529,10 +570,15 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let error_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
-        assert!(error_response["error"].as_str().unwrap().contains("No file provided"));
+        assert!(error_response["error"]
+            .as_str()
+            .unwrap()
+            .contains("No file provided"));
     }
 
     #[tokio::test]
@@ -543,7 +589,9 @@ mod tests {
 
         let mut body = Vec::new();
         body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n");
+        body.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n",
+        );
         body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
         body.extend_from_slice(content);
         body.extend_from_slice(b"\r\n");
@@ -565,10 +613,15 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let error_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
-        assert!(error_response["error"].as_str().unwrap().contains("No seal_data provided"));
+        assert!(error_response["error"]
+            .as_str()
+            .unwrap()
+            .contains("No seal_data provided"));
     }
 
     #[tokio::test]
@@ -591,10 +644,15 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let error_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
-        assert!(error_response["error"].as_str().unwrap().contains("Invalid base64"));
+        assert!(error_response["error"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid base64"));
     }
 
     #[tokio::test]
@@ -616,7 +674,12 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(response.status(), StatusCode::OK, "Failed for media_type: {}", media_type);
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "Failed for media_type: {}",
+                media_type
+            );
         }
     }
 }

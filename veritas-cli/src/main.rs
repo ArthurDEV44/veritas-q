@@ -60,9 +60,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Seal { file, format, mock } => {
-            commands::seal::execute(file, format, mock).await
-        }
+        Commands::Seal { file, format, mock } => commands::seal::execute(file, format, mock).await,
         Commands::Verify { file, seal } => commands::verify::execute(file, seal).await,
         Commands::Anchor { seal, update_seal } => {
             commands::anchor::execute(seal, update_seal).await
