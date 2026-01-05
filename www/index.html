@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Veritas Q - Reality Authentication Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+            50% { box-shadow: 0 0 0 20px rgba(34, 197, 94, 0); }
+        }
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+        }
+        .pulse-green { animation: pulse-green 2s infinite; }
+        .pulse-red { animation: pulse-red 2s infinite; }
+        .drop-zone-active { border-color: #3b82f6; background-color: rgba(59, 130, 246, 0.1); }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-2 bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
+                Veritas Q
+            </h1>
+            <p class="text-xl text-slate-300">Quantum-Authenticated Reality Verification</p>
+            <p class="text-sm text-slate-500 mt-2">Client-side verification • Your files never leave your browser</p>
+        </header>
+
+        <!-- Drop Zone -->
+        <div id="dropZone" class="border-4 border-dashed border-slate-600 rounded-2xl p-12 text-center cursor-pointer hover:border-purple-500 transition-all duration-300 mb-8 bg-slate-800/50 backdrop-blur">
+            <div class="mb-6">
+                <svg class="w-20 h-20 mx-auto text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-semibold mb-2">Drop Files to Verify</h2>
+            <p class="text-slate-400 mb-4">Drop your file and its <code class="bg-slate-700 px-2 py-1 rounded">.veritas</code> seal together</p>
+            <p class="text-sm text-slate-500">Or click to select files</p>
+            <input type="file" id="fileInput" multiple class="hidden" accept="*/*">
+        </div>
+
+        <!-- File Status -->
+        <div id="fileStatus" class="hidden mb-8 p-4 bg-slate-800/70 rounded-xl">
+            <h3 class="font-semibold mb-2">Files Selected:</h3>
+            <div id="fileList" class="text-slate-300"></div>
+        </div>
+
+        <!-- Result Display -->
+        <div id="resultContainer" class="hidden">
+            <!-- Authentic Result -->
+            <div id="authenticResult" class="hidden text-center p-8 rounded-2xl bg-green-900/30 border-2 border-green-500">
+                <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-green-500/20 flex items-center justify-center pulse-green">
+                    <svg class="w-20 h-20 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                    </svg>
+                </div>
+                <h2 class="text-4xl font-bold text-green-400 mb-2">AUTHENTIC</h2>
+                <p class="text-green-300 mb-4">This file has a valid quantum-authenticated seal</p>
+                <div id="authenticDetails" class="text-left bg-slate-800/50 rounded-lg p-4 text-sm"></div>
+            </div>
+
+            <!-- Tampered Result -->
+            <div id="tamperedResult" class="hidden text-center p-8 rounded-2xl bg-red-900/30 border-2 border-red-500">
+                <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-red-500/20 flex items-center justify-center pulse-red">
+                    <svg class="w-20 h-20 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <h2 class="text-4xl font-bold text-red-400 mb-2">TAMPERED</h2>
+                <p class="text-red-300 mb-4">This file has been modified or the seal is invalid</p>
+                <div id="tamperedDetails" class="text-left bg-slate-800/50 rounded-lg p-4 text-sm"></div>
+            </div>
+
+            <!-- Error Result -->
+            <div id="errorResult" class="hidden text-center p-8 rounded-2xl bg-yellow-900/30 border-2 border-yellow-500">
+                <div class="w-32 h-32 mx-auto mb-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                    <svg class="w-20 h-20 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <h2 class="text-4xl font-bold text-yellow-400 mb-2">ERROR</h2>
+                <p id="errorMessage" class="text-yellow-300"></p>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loadingIndicator" class="hidden text-center py-12">
+            <div class="inline-block w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            <p class="mt-4 text-slate-300">Verifying with ML-DSA post-quantum signature...</p>
+        </div>
+
+        <!-- Info Box -->
+        <div id="wasmStatus" class="mt-8 p-4 bg-slate-800/70 rounded-xl text-sm">
+            <div class="flex items-center gap-2 mb-2">
+                <div id="statusDot" class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <span id="statusText" class="text-yellow-400">Loading WASM module...</span>
+            </div>
+            <p class="text-slate-400 text-xs">Full client-side verification requires the WASM module to be built with clang/LLVM.</p>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-12 text-slate-500 text-sm">
+            <p>Powered by <span class="text-purple-400">ML-DSA-65</span> post-quantum signatures</p>
+            <p class="mt-1">Version <span id="wasmVersion">0.1.0</span></p>
+        </footer>
+    </div>
+
+    <script type="module">
+        let wasmReady = false;
+        let verifyFunction = null;
+
+        // Try to load WASM module
+        async function initWasm() {
+            try {
+                const module = await import('./pkg/veritas_wasm.js');
+                await module.default();
+                wasmReady = true;
+                verifyFunction = module.verify_file_wasm;
+                document.getElementById('wasmVersion').textContent = module.get_version();
+                document.getElementById('statusDot').classList.remove('bg-yellow-500');
+                document.getElementById('statusDot').classList.add('bg-green-500');
+                document.getElementById('statusText').classList.remove('text-yellow-400');
+                document.getElementById('statusText').classList.add('text-green-400');
+                document.getElementById('statusText').textContent = 'WASM module loaded - Full verification enabled';
+                console.log('Veritas WASM initialized');
+            } catch (e) {
+                console.warn('WASM module not available, using demo mode:', e.message);
+                document.getElementById('statusDot').classList.remove('bg-yellow-500');
+                document.getElementById('statusDot').classList.add('bg-blue-500');
+                document.getElementById('statusText').classList.remove('text-yellow-400');
+                document.getElementById('statusText').classList.add('text-blue-400');
+                document.getElementById('statusText').textContent = 'Demo mode - WASM not built (requires clang). Hash-only verification available.';
+            }
+        }
+
+        initWasm();
+
+        // DOM elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileStatus = document.getElementById('fileStatus');
+        const fileList = document.getElementById('fileList');
+        const resultContainer = document.getElementById('resultContainer');
+        const authenticResult = document.getElementById('authenticResult');
+        const tamperedResult = document.getElementById('tamperedResult');
+        const errorResult = document.getElementById('errorResult');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+
+        // State
+        let contentFile = null;
+        let sealFile = null;
+
+        // Event listeners
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drop-zone-active');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drop-zone-active');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drop-zone-active');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            contentFile = null;
+            sealFile = null;
+
+            for (const file of files) {
+                if (file.name.endsWith('.veritas')) {
+                    sealFile = file;
+                } else {
+                    contentFile = file;
+                }
+            }
+
+            updateFileStatus();
+
+            if (contentFile && sealFile) {
+                verifyFiles();
+            }
+        }
+
+        function updateFileStatus() {
+            if (contentFile || sealFile) {
+                fileStatus.classList.remove('hidden');
+                let html = '';
+                if (contentFile) {
+                    html += `<div class="flex items-center gap-2 text-green-400">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                        Content: ${contentFile.name} (${formatBytes(contentFile.size)})
+                    </div>`;
+                } else {
+                    html += `<div class="text-slate-500">Content file: waiting...</div>`;
+                }
+                if (sealFile) {
+                    html += `<div class="flex items-center gap-2 text-green-400">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                        Seal: ${sealFile.name}
+                    </div>`;
+                } else {
+                    html += `<div class="text-slate-500">Seal file (.veritas): waiting...</div>`;
+                }
+                fileList.innerHTML = html;
+            } else {
+                fileStatus.classList.add('hidden');
+            }
+        }
+
+        async function verifyFiles() {
+            // Show loading
+            resultContainer.classList.add('hidden');
+            loadingIndicator.classList.remove('hidden');
+
+            try {
+                // Read files
+                const contentBytes = new Uint8Array(await contentFile.arrayBuffer());
+                const sealBytes = new Uint8Array(await sealFile.arrayBuffer());
+
+                let result;
+
+                if (wasmReady && verifyFunction) {
+                    // Use WASM verification
+                    const resultJson = verifyFunction(contentBytes, sealBytes);
+                    result = JSON.parse(resultJson);
+                } else {
+                    // Demo mode: Parse seal and check hash only (no signature verification)
+                    result = await demoVerify(contentBytes, sealBytes);
+                }
+
+                loadingIndicator.classList.add('hidden');
+                resultContainer.classList.remove('hidden');
+
+                if (result.error) {
+                    showError(result.error);
+                } else if (result.valid) {
+                    showAuthentic(result);
+                } else {
+                    showTampered(result);
+                }
+            } catch (e) {
+                loadingIndicator.classList.add('hidden');
+                showError(e.message || 'Unknown error during verification');
+            }
+        }
+
+        // Demo verification (hash-only, no signature check)
+        async function demoVerify(contentBytes, sealBytes) {
+            // Try to parse the seal as JSON
+            let seal;
+            try {
+                const decoder = new TextDecoder();
+                const text = decoder.decode(sealBytes);
+                seal = JSON.parse(text);
+            } catch {
+                // Try as CBOR (just detect if it starts with expected bytes)
+                return { valid: false, error: 'Demo mode only supports JSON seals. Build WASM for full CBOR support.' };
+            }
+
+            // Compute SHA3-256 hash using SubtleCrypto (fallback to SHA-256)
+            const hashBuffer = await crypto.subtle.digest('SHA-256', contentBytes);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const actualHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            // Compare with seal hash
+            const expectedHash = seal.content_hash?.crypto_hash
+                ? Array.from(seal.content_hash.crypto_hash).map(b => b.toString(16).padStart(2, '0')).join('')
+                : '';
+
+            // Note: In demo mode we use SHA-256 (browser native) instead of SHA3-256
+            // This means hash won't match seals created with CLI (which uses SHA3-256)
+            const contentMatches = actualHash === expectedHash;
+
+            return {
+                valid: false, // Demo mode can't verify signatures
+                content_matches: contentMatches,
+                timestamp: seal.capture_timestamp_utc ? new Date(seal.capture_timestamp_utc).toISOString() : 'Unknown',
+                content_hash: actualHash,
+                expected_hash: expectedHash,
+                qrng_source: JSON.stringify(seal.qrng_source) || 'Unknown',
+                media_type: seal.media_type || 'Unknown',
+                error: null,
+                demo_mode: true,
+                demo_note: 'Demo mode: Signature verification requires WASM module (build with clang)'
+            };
+        }
+
+        function showAuthentic(result) {
+            authenticResult.classList.remove('hidden');
+            tamperedResult.classList.add('hidden');
+            errorResult.classList.add('hidden');
+
+            let demoNote = result.demo_mode
+                ? '<div class="mt-2 text-yellow-400 text-xs">' + result.demo_note + '</div>'
+                : '';
+
+            document.getElementById('authenticDetails').innerHTML = `
+                <div class="grid gap-2">
+                    <div><span class="text-slate-400">Timestamp:</span> <span class="text-green-300">${result.timestamp}</span></div>
+                    <div><span class="text-slate-400">Content Hash:</span> <code class="text-green-300 text-xs">${result.content_hash.substring(0, 32)}...</code></div>
+                    <div><span class="text-slate-400">QRNG Source:</span> <span class="text-green-300">${result.qrng_source}</span></div>
+                    <div><span class="text-slate-400">Media Type:</span> <span class="text-green-300">${result.media_type}</span></div>
+                    <div><span class="text-slate-400">Signature:</span> <span class="text-green-300">Valid (ML-DSA-65)</span></div>
+                </div>
+                ${demoNote}
+            `;
+        }
+
+        function showTampered(result) {
+            authenticResult.classList.add('hidden');
+            tamperedResult.classList.remove('hidden');
+            errorResult.classList.add('hidden');
+
+            let demoNote = result.demo_mode
+                ? '<div class="mt-2 text-yellow-400 text-xs">' + result.demo_note + '</div>'
+                : '';
+
+            let details = '<div class="grid gap-2">';
+            if (!result.content_matches) {
+                details += `
+                    <div class="text-red-400">Content has been modified!</div>
+                    <div><span class="text-slate-400">Expected:</span> <code class="text-red-300 text-xs">${(result.expected_hash || '').substring(0, 32)}...</code></div>
+                    <div><span class="text-slate-400">Got:</span> <code class="text-red-300 text-xs">${result.content_hash.substring(0, 32)}...</code></div>
+                `;
+            } else {
+                details += '<div class="text-red-400">Signature verification failed!</div>';
+            }
+            details += '</div>' + demoNote;
+            document.getElementById('tamperedDetails').innerHTML = details;
+        }
+
+        function showError(message) {
+            resultContainer.classList.remove('hidden');
+            authenticResult.classList.add('hidden');
+            tamperedResult.classList.add('hidden');
+            errorResult.classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+    </script>
+</body>
+</html>
