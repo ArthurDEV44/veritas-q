@@ -1,0 +1,25 @@
+[package]
+name = "veritas-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WebAssembly bindings for Veritas Q seal verification"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+web-sys.workspace = true
+console_error_panic_hook = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+chrono.workspace = true
+
+# veritas-core with only verification features (no network)
+veritas-core = { workspace = true, default-features = false }
+
+[features]
+default = ["console_error_panic_hook"]
