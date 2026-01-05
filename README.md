@@ -1,24 +1,24 @@
 # Veritas Q
 
-**Quantum-Authenticated Media Sealing Platform**
+**Plateforme de Scellement Média Authentifié par Cryptographie Quantique**
 
-Veritas Q establishes the global standard for "Reality Authentication" by using Quantum Random Number Generators (QRNG) to cryptographically sign media content at the moment of capture, producing an unforgeable **Veritas Seal**.
+Veritas Q établit le standard mondial pour l'"Authentification de la Réalité" en utilisant des Générateurs de Nombres Aléatoires Quantiques (QRNG) pour signer cryptographiquement le contenu média au moment de la capture, produisant un **Sceau Veritas** infalsifiable.
 
-## Why Veritas Q?
+## Pourquoi Veritas Q ?
 
-In an era of deepfakes and AI-generated content, proving that media is authentic and unaltered is critical. Veritas Q solves this by:
+À l'ère des deepfakes et du contenu généré par IA, prouver qu'un média est authentique et non altéré est crucial. Veritas Q résout ce problème grâce à :
 
-- **Quantum Entropy Binding** - Each seal contains 256 bits of true quantum randomness from certified QRNG sources, making forgery computationally impossible
-- **Post-Quantum Cryptography** - ML-DSA-65 signatures (FIPS 204) protect against future quantum computer attacks
-- **Blockchain Anchoring** - Optional Solana timestamps provide immutable public proof of when content was sealed
-- **C2PA Compatible** - Interoperable with Adobe/Microsoft content authenticity standards
+- **Liaison d'Entropie Quantique** - Chaque sceau contient 256 bits de véritable aléatoire quantique provenant de sources QRNG certifiées, rendant la falsification informatiquement impossible
+- **Cryptographie Post-Quantique** - Les signatures ML-DSA-65 (FIPS 204) protègent contre les futures attaques d'ordinateurs quantiques
+- **Ancrage Blockchain** - Les horodatages Solana optionnels fournissent une preuve publique immuable de la date de scellement
+- **Compatible C2PA** - Interopérable avec les standards d'authenticité de contenu Adobe/Microsoft
 
-## Quick Start
+## Démarrage Rapide
 
-### Prerequisites
+### Prérequis
 
 - Rust 1.70+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
-- Clang/LLVM (for post-quantum crypto compilation)
+- Clang/LLVM (pour la compilation de la crypto post-quantique)
 
 ### Installation
 
@@ -28,13 +28,13 @@ cd veritas-q
 cargo build --workspace --release
 ```
 
-### Seal Your First File
+### Scellez Votre Premier Fichier
 
 ```bash
-# Seal an image with quantum entropy
+# Sceller une image avec de l'entropie quantique
 ./target/release/veritas-cli seal photo.jpg
 
-# Verify the seal
+# Vérifier le sceau
 ./target/release/veritas-cli verify photo.jpg
 ```
 
@@ -42,151 +42,151 @@ cargo build --workspace --release
 
 ```
 veritas-q/
-├── veritas-core/    # Core library - cryptographic primitives, seal generation/verification
-├── veritas-cli/     # Command-line tool for seal operations
-├── veritas-server/  # REST API server (Truth API) for B2B integration
-├── veritas-wasm/    # WebAssembly module for browser-based verification
-└── www/             # Web verification portal
+├── veritas-core/    # Bibliothèque core - primitives cryptographiques, génération/vérification de sceaux
+├── veritas-cli/     # Outil en ligne de commande pour les opérations de scellement
+├── veritas-server/  # Serveur REST API (Truth API) pour l'intégration B2B
+├── veritas-wasm/    # Module WebAssembly pour la vérification dans le navigateur
+└── www/             # Portail web de vérification
 ```
 
-## CLI Usage
+## Utilisation CLI
 
 ```bash
-# Seal with quantum entropy (falls back to mock if QRNG unavailable)
-veritas-cli seal <FILE>
+# Sceller avec de l'entropie quantique (fallback sur mock si QRNG indisponible)
+veritas-cli seal <FICHIER>
 
-# Seal with mock entropy (testing only, not quantum-safe)
-veritas-cli seal --mock <FILE>
+# Sceller avec de l'entropie mock (tests uniquement, non sécurisé quantiquement)
+veritas-cli seal --mock <FICHIER>
 
-# Verify a sealed file
-veritas-cli verify <FILE>
-veritas-cli verify <FILE> <SEAL_PATH>
+# Vérifier un fichier scellé
+veritas-cli verify <FICHIER>
+veritas-cli verify <FICHIER> <CHEMIN_SCEAU>
 
-# Anchor seal to Solana blockchain
-veritas-cli anchor <SEAL_PATH>
-veritas-cli anchor <SEAL_PATH> --update-seal
+# Ancrer le sceau sur la blockchain Solana
+veritas-cli anchor <CHEMIN_SCEAU>
+veritas-cli anchor <CHEMIN_SCEAU> --update-seal
 ```
 
-## Truth API (REST Server)
+## Truth API (Serveur REST)
 
-For B2B integration, run the Truth API server:
+Pour l'intégration B2B, lancez le serveur Truth API :
 
 ```bash
 cargo run -p veritas-server --release
-# Server runs on http://127.0.0.1:3000
+# Le serveur tourne sur http://127.0.0.1:3000
 ```
 
 ### Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/seal` | POST | Create quantum seal (multipart: file, media_type?, mock?) |
-| `/verify` | POST | Verify seal (multipart: file, seal_data) |
-| `/health` | GET | Health check |
+| Endpoint | Méthode | Description |
+|----------|---------|-------------|
+| `/seal` | POST | Créer un sceau quantique (multipart: file, media_type?, mock?) |
+| `/verify` | POST | Vérifier un sceau (multipart: file, seal_data) |
+| `/health` | GET | Vérification de santé |
 
-### Example
+### Exemple
 
 ```bash
-# Create a seal
+# Créer un sceau
 curl -X POST http://127.0.0.1:3000/seal \
   -F 'file=@photo.jpg' \
   -F 'media_type=image'
 
-# Response
+# Réponse
 {
   "seal_id": "f4d8ef89-cf0f-4d6f-acbf-9e0740482f76",
   "seal_data": "BASE64_ENCODED_CBOR...",
   "timestamp": 1767647488764
 }
 
-# Verify the seal
+# Vérifier le sceau
 curl -X POST http://127.0.0.1:3000/verify \
   -F 'file=@photo.jpg' \
-  -F 'seal_data=<seal_data from above>'
+  -F 'seal_data=<seal_data ci-dessus>'
 
-# Response
+# Réponse
 {
   "authentic": true,
   "details": "Seal valid. Media type: Image, QRNG source: AnuCloud, Captured: 2026-01-05T21:12:05+00:00"
 }
 ```
 
-## Web Verification Portal
+## Portail Web de Vérification
 
-Build and serve the browser-based verification tool:
+Compilez et servez l'outil de vérification dans le navigateur :
 
 ```bash
-# Build WASM module
+# Compiler le module WASM
 wasm-pack build veritas-wasm --target web --out-dir ../www/pkg
 
-# Serve locally
+# Servir localement
 cd www && python3 -m http.server 8080
-# Open http://localhost:8080
+# Ouvrir http://localhost:8080
 ```
 
-## The Veritas Seal
+## Le Sceau Veritas
 
-Each seal contains:
+Chaque sceau contient :
 
-| Field | Description |
+| Champ | Description |
 |-------|-------------|
-| `capture_timestamp_utc` | NTP-synced timestamp (milliseconds) |
-| `capture_location` | Optional privacy-preserving geohash |
-| `device_attestation` | TEE-signed device identity (when available) |
-| `qrng_entropy` | 256 bits from quantum source |
-| `qrng_source` | Source attestation (ANU, ID Quantique, etc.) |
-| `content_hash` | SHA3-256 + optional perceptual hash |
-| `media_type` | Image, Video, or Audio |
-| `signature` | ML-DSA-65 post-quantum signature |
-| `blockchain_anchor` | Optional Solana transaction reference |
+| `capture_timestamp_utc` | Horodatage synchronisé NTP (millisecondes) |
+| `capture_location` | Geohash optionnel préservant la vie privée |
+| `device_attestation` | Identité de l'appareil signée par TEE (si disponible) |
+| `qrng_entropy` | 256 bits provenant d'une source quantique |
+| `qrng_source` | Attestation de la source (ANU, ID Quantique, etc.) |
+| `content_hash` | SHA3-256 + hash perceptuel optionnel |
+| `media_type` | Image, Vidéo ou Audio |
+| `signature` | Signature post-quantique ML-DSA-65 |
+| `blockchain_anchor` | Référence de transaction Solana optionnelle |
 
-## QRNG Sources
+## Sources QRNG
 
 | Source | Usage | Notes |
 |--------|-------|-------|
-| `MockQrng` | Testing | Deterministic, not quantum-safe |
-| `AnuQrng` | Development | Free public API (Australian National University) |
-| ID Quantique | Production | Requires `QRNG_API_KEY` |
+| `MockQrng` | Tests | Déterministe, non sécurisé quantiquement |
+| `AnuQrng` | Développement | API publique gratuite (Australian National University) |
+| ID Quantique | Production | Nécessite `QRNG_API_KEY` |
 
-## Environment Variables
+## Variables d'Environnement
 
 ```bash
-QRNG_API_KEY=           # ID Quantique API key (production)
-QRNG_API_URL=           # Custom QRNG endpoint
-SOLANA_RPC_URL=         # Solana RPC (default: devnet)
-SOLANA_KEYPAIR_PATH=    # Path to anchor wallet keypair
+QRNG_API_KEY=           # Clé API ID Quantique (production)
+QRNG_API_URL=           # Endpoint QRNG personnalisé
+SOLANA_RPC_URL=         # RPC Solana (défaut: devnet)
+SOLANA_KEYPAIR_PATH=    # Chemin vers le keypair du wallet d'ancrage
 ```
 
-## Development
+## Développement
 
 ```bash
-# Build all crates
+# Compiler tous les crates
 cargo build --workspace
 
-# Run tests
+# Lancer les tests
 cargo test --workspace
 
-# Run single test
-cargo test -p veritas-core test_name
+# Lancer un test unique
+cargo test -p veritas-core nom_du_test
 
 # Lint
 cargo clippy --workspace -- -D warnings
 
-# Format
+# Formatage
 cargo fmt --all
 ```
 
-## Security Considerations
+## Considérations de Sécurité
 
-- **Entropy timestamps** must be within 5 seconds of capture timestamp
-- **QRNG API calls** should use TLS 1.3 with certificate pinning in production
-- **Key material** should be generated and stored in TEE (TrustZone/Secure Enclave) when available
-- **Analog hole detection** is probabilistic - never claim 100% deepfake prevention
+- **Les horodatages d'entropie** doivent être à moins de 5 secondes de l'horodatage de capture
+- **Les appels API QRNG** doivent utiliser TLS 1.3 avec certificate pinning en production
+- **Le matériel cryptographique** doit être généré et stocké dans un TEE (TrustZone/Secure Enclave) si disponible
+- **La détection du trou analogique** est probabiliste - ne jamais prétendre à une prévention des deepfakes à 100%
 
-## License
+## Licence
 
 MIT OR Apache-2.0
 
-## Contributing
+## Contribution
 
-Contributions welcome! Please read the security considerations above before submitting PRs involving cryptographic code.
+Les contributions sont les bienvenues ! Veuillez lire les considérations de sécurité ci-dessus avant de soumettre des PRs impliquant du code cryptographique.
