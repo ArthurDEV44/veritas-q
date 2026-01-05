@@ -14,9 +14,16 @@ veritas-q/
 ├── veritas-cli/     # Command-line tool for seal operations
 ├── veritas-wasm/    # WebAssembly bindings for browser verification
 ├── veritas-server/  # REST API server (Truth API) for B2B SaaS
-├── www/             # Web verification portal (Tailwind CSS)
-├── sdk-mobile/      # Mobile bindings (Kotlin/Swift via uniffi) [planned]
-└── contracts/       # Solana on-chain program for seal anchoring [planned]
+└── www/             # Next.js frontend (PWA client for the Rust API)
+```
+
+### Crate Dependencies
+
+All consumer crates depend on `veritas-core`:
+```
+veritas-cli ──────┐
+veritas-server ───┼──> veritas-core (shared cryptographic core)
+veritas-wasm ─────┘
 ```
 
 ### Key Technical Decisions
@@ -43,21 +50,34 @@ Core data structure containing:
 # Build all Rust crates
 cargo build --workspace
 
+# Build release
+cargo build --workspace --release
+
 # Run tests
 cargo test --workspace
 
 # Run a single test
 cargo test -p veritas-core test_name
 
-# Build release
-cargo build --workspace --release
+# Run tests for a specific crate
+cargo test -p veritas-server
 
 # Lint
 cargo clippy --workspace -- -D warnings
 
 # Format
 cargo fmt --all
+
+# Run full CI locally (same as GitHub Actions)
+./scripts/ci-local.sh
 ```
+
+### Prerequisites
+
+- **Rust 1.70+** - Install via `rustup`
+- **Clang/LLVM** - Required for compiling post-quantum crypto C code
+  - Ubuntu/Debian: `apt install clang`
+  - macOS: `brew install llvm`
 
 ## CLI Usage
 
@@ -103,20 +123,37 @@ curl -X POST http://127.0.0.1:3000/verify \
   -F 'seal_data=<base64-encoded-seal>'
 ```
 
-## WebAssembly Build
+## Frontend (Next.js)
 
-Building the WASM module requires clang/LLVM for the pqcrypto C code:
+The `www/` directory contains a Next.js 16 (App Router) PWA that acts as the client for the Rust API.
 
 ```bash
-# Prerequisites
-apt install clang  # or brew install llvm on macOS
+cd www
 
-# Build WASM module
+# Install dependencies
+bun install
+
+# Development server (http://localhost:3001)
+bun dev
+
+# Production build
+bun run build
+
+# Lint
+bun lint
+```
+
+**Key Components:**
+- `components/CameraCapture.tsx` - Camera capture with quantum sealing
+- `components/Verifier.tsx` - Drag-and-drop seal verification
+
+**API Connection:** The frontend calls `localhost:3000` (Rust server) by default. Configure via `NEXT_PUBLIC_API_URL` environment variable.
+
+## WebAssembly Build
+
+```bash
+# Build WASM module (requires wasm-pack: cargo install wasm-pack)
 wasm-pack build veritas-wasm --target web --out-dir ../www/pkg
-
-# Serve the web portal locally
-cd www && python3 -m http.server 8080
-# Open http://localhost:8080 in browser
 ```
 
 ### Feature Flags
@@ -177,3 +214,16 @@ Use the `QuantumEntropySource` trait with `MockQrng` implementation for tests th
 - `MockQrng` - Deterministic mock for unit tests (not quantum-safe)
 - `AnuQrng` - Australian National University public QRNG API (development)
 - ID Quantique API - Production QRNG (requires `QRNG_API_KEY`)
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `veritas-core/src/seal.rs` | Core `VeritasSeal` struct, `SealBuilder`, signature/verification logic |
+| `veritas-core/src/qrng/mod.rs` | `QuantumEntropySource` trait definition |
+| `veritas-core/src/qrng/anu.rs` | ANU QRNG client implementation |
+| `veritas-core/src/qrng/mock.rs` | Deterministic mock for testing |
+| `veritas-server/src/main.rs` | REST API handlers (`/seal`, `/verify`, `/health`) |
+| `veritas-cli/src/commands/` | CLI command implementations |
+| `www/components/CameraCapture.tsx` | Camera capture and seal creation UI |
+| `www/components/Verifier.tsx` | Drag-and-drop verification UI |

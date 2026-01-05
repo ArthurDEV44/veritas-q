@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+:root {
+  /* Veritas Dark Theme - "Midnight Black" */
+  --background: #0a0a0a;
+  --foreground: #ededed;
+
+  /* Quantum Green Accent */
+  --quantum-green: #00ff88;
+  --quantum-green-dim: #00cc6a;
+  --quantum-green-glow: rgba(0, 255, 136, 0.3);
+
+  /* Status Colors */
+  --verified-green: #22c55e;
+  --failed-red: #ef4444;
+  --warning-amber: #f59e0b;
+
+  /* Surface Colors */
+  --surface: #111111;
+  --surface-elevated: #1a1a1a;
+  --border: #2a2a2a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-quantum: var(--quantum-green);
+  --color-quantum-dim: var(--quantum-green-dim);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border: var(--border);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Quantum Glow Effects */
+.quantum-glow {
+  box-shadow: 0 0 20px var(--quantum-green-glow), 0 0 40px var(--quantum-green-glow);
+}
+
+.quantum-glow-sm {
+  box-shadow: 0 0 10px var(--quantum-green-glow);
+}
+
+/* Pulse animation for loading states */
+@keyframes quantum-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.quantum-pulse {
+  animation: quantum-pulse 2s ease-in-out infinite;
+}
+
+/* Shield animations */
+@keyframes shield-verified {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes shield-failed {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.shield-verified {
+  animation: shield-verified 0.5s ease-out;
+}
+
+.shield-failed {
+  animation: shield-failed 0.3s ease-in-out 3;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
