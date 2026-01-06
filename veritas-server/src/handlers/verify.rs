@@ -8,6 +8,7 @@ use serde::Serialize;
 use veritas_core::{ContentHash, VeritasSeal};
 
 use crate::error::ApiError;
+use crate::validation::{validate_content_type, validate_file_size, DEFAULT_MAX_FILE_SIZE};
 
 /// Response for verification
 #[derive(Serialize)]
@@ -35,13 +36,21 @@ pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyRespo
 
         match name.as_str() {
             "file" => {
-                file_data = Some(
-                    field
-                        .bytes()
-                        .await
-                        .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?
-                        .to_vec(),
-                );
+                // Validate Content-Type
+                let content_type = field.content_type().map(|s| s.to_string());
+                validate_content_type(content_type.as_deref())?;
+
+                // Read file data
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?
+                    .to_vec();
+
+                // Validate file size
+                validate_file_size(data.len(), DEFAULT_MAX_FILE_SIZE)?;
+
+                file_data = Some(data);
             }
             "seal_data" => {
                 seal_data = Some(field.text().await.map_err(|e| {

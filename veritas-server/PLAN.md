@@ -162,8 +162,8 @@ thiserror = "2.0"
 7. [x] Phase 3.1 - thiserror
 8. [x] Phase 3.2 - Health check enrichi
 9. [x] Phase 3.3 - Request ID
-10. [ ] Phase 4.1 - Validation uploads
-11. [ ] Phase 4.2 - Tests additionnels
+10. [x] Phase 4.1 - Validation uploads
+11. [x] Phase 4.2 - Tests additionnels
 
 ---
 
@@ -189,9 +189,12 @@ tower-http = { version = "0.6", features = ["cors", "limit", "trace", "request-i
 - [x] Requêtes > 30s retournent 408 Request Timeout
 - [x] Configuration via variables d'environnement
 - [x] Rate limiting actif sur `/seal`
-- [x] Tous les tests passent
+- [x] Tous les tests passent (22 tests)
 - [x] `cargo clippy` sans warnings
 - [x] ApiError utilise thiserror avec variants typés
 - [x] Health check retourne JSON (status, version, qrng_available, service)
 - [x] Endpoint /ready pour Kubernetes
 - [x] Request ID (x-request-id) propagé dans headers et logs
+- [x] Validation Content-Type des uploads (image/*, video/*, audio/*)
+- [x] Limite de taille par fichier (MAX_FILE_SIZE_MB, défaut: 25MB)
+- [x] Tests CORS, Request ID, Content-Type validation

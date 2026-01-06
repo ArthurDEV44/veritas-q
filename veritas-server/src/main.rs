@@ -9,6 +9,7 @@ mod config;
 mod error;
 mod handlers;
 mod routes;
+mod validation;
 
 pub use config::Config;
 pub use error::ApiError;
@@ -95,8 +96,8 @@ async fn main() {
         println!("  Rate limit: DISABLED");
     }
     println!("\nEnvironment variables:");
-    println!("  PORT, HOST, ALLOWED_ORIGINS, BODY_LIMIT_MB, REQUEST_TIMEOUT_SECS,");
-    println!("  RATE_LIMIT_ENABLED, RATE_LIMIT_PER_SEC, RATE_LIMIT_BURST");
+    println!("  PORT, HOST, ALLOWED_ORIGINS, BODY_LIMIT_MB, MAX_FILE_SIZE_MB,");
+    println!("  REQUEST_TIMEOUT_SECS, RATE_LIMIT_ENABLED, RATE_LIMIT_PER_SEC, RATE_LIMIT_BURST");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app)
@@ -515,5 +516,194 @@ mod tests {
                 media_type
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_cors_headers_present() {
+        let app = create_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("OPTIONS")
+                    .uri("/seal")
+                    .header("Origin", "http://localhost:3001")
+                    .header("Access-Control-Request-Method", "POST")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // CORS preflight should return 200
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Check CORS headers are present
+        assert!(response
+            .headers()
+            .contains_key("access-control-allow-origin"));
+        assert!(response
+            .headers()
+            .contains_key("access-control-allow-methods"));
+    }
+
+    #[tokio::test]
+    async fn test_request_id_header_propagated() {
+        let app = create_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // x-request-id should be set on response
+        assert!(
+            response.headers().contains_key("x-request-id"),
+            "x-request-id header should be present"
+        );
+
+        // Should be a valid UUID
+        let request_id = response.headers().get("x-request-id").unwrap();
+        let id_str = request_id.to_str().unwrap();
+        assert!(
+            uuid::Uuid::parse_str(id_str).is_ok(),
+            "x-request-id should be a valid UUID"
+        );
+    }
+
+    /// Helper to create multipart with specific file content type
+    fn create_seal_multipart_with_content_type(
+        content: &[u8],
+        file_content_type: &str,
+    ) -> (String, Vec<u8>) {
+        let boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
+        let mut body = Vec::new();
+
+        // File field with specific content type
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n",
+        );
+        body.extend_from_slice(format!("Content-Type: {}\r\n\r\n", file_content_type).as_bytes());
+        body.extend_from_slice(content);
+        body.extend_from_slice(b"\r\n");
+
+        // Mock field (always use mock for tests)
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"mock\"\r\n\r\n");
+        body.extend_from_slice(b"true");
+        body.extend_from_slice(b"\r\n");
+
+        // End boundary
+        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+        let content_type = format!("multipart/form-data; boundary={}", boundary);
+        (content_type, body)
+    }
+
+    #[tokio::test]
+    async fn test_seal_rejects_unsupported_content_type() {
+        let app = create_router();
+        let content = b"<html><body>Not a media file</body></html>";
+        let (content_type, body) = create_seal_multipart_with_content_type(content, "text/html");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/seal")
+                    .header("content-type", content_type)
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let error_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+        assert!(error_response["error"]
+            .as_str()
+            .unwrap()
+            .contains("Unsupported Content-Type"));
+    }
+
+    #[tokio::test]
+    async fn test_seal_accepts_valid_content_types() {
+        let valid_types = [
+            "image/jpeg",
+            "image/png",
+            "video/mp4",
+            "audio/mpeg",
+            "application/octet-stream",
+        ];
+
+        for file_type in valid_types {
+            let app = create_router();
+            let content = b"Test content";
+            let (content_type, body) = create_seal_multipart_with_content_type(content, file_type);
+
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/seal")
+                        .header("content-type", content_type)
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "Should accept Content-Type: {}",
+                file_type
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_health_returns_json_with_required_fields() {
+        let app = create_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Check Content-Type is JSON
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(content_type.to_str().unwrap().contains("application/json"));
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Verify all required fields
+        assert!(json["status"].is_string());
+        assert!(json["version"].is_string());
+        assert!(json["qrng_available"].is_boolean());
+        assert_eq!(json["service"], "veritas-server");
     }
 }

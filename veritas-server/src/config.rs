@@ -15,6 +15,8 @@ pub struct Config {
     pub allowed_origins: Option<Vec<String>>,
     /// Request body limit in MB (default: 50)
     pub body_limit_mb: usize,
+    /// Maximum file size per upload in MB (default: 25)
+    pub max_file_size_mb: usize,
     /// Request timeout in seconds (default: 30)
     pub timeout_secs: u64,
     /// Enable rate limiting (default: false for tests, true when loaded from env)
@@ -32,6 +34,7 @@ impl Default for Config {
             host: [127, 0, 0, 1],
             allowed_origins: None, // None = allow all (dev mode)
             body_limit_mb: 50,
+            max_file_size_mb: 25,
             timeout_secs: 30,
             rate_limit_enabled: false, // Disabled by default (for tests)
             rate_limit_per_sec: 10,
@@ -72,6 +75,11 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(50);
 
+        let max_file_size_mb = std::env::var("MAX_FILE_SIZE_MB")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(25);
+
         let timeout_secs = std::env::var("REQUEST_TIMEOUT_SECS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -97,6 +105,7 @@ impl Config {
             host,
             allowed_origins,
             body_limit_mb,
+            max_file_size_mb,
             timeout_secs,
             rate_limit_enabled,
             rate_limit_per_sec,
