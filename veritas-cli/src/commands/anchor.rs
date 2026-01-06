@@ -20,6 +20,8 @@ use spl_memo::build_memo;
 use tracing::{debug, info, warn};
 use veritas_core::VeritasSeal;
 
+use crate::utils::load_seal;
+
 /// Solana Devnet RPC endpoint.
 const DEVNET_RPC_URL: &str = "https://api.devnet.solana.com";
 
@@ -30,32 +32,38 @@ const AIRDROP_SOL: u64 = 1;
 const AIRDROP_RETRIES: u32 = 3;
 
 /// Execute the anchor command.
-pub async fn execute(seal_path: PathBuf, update_seal: bool, quiet: bool) -> Result<()> {
+pub async fn execute(
+    seal_path: PathBuf,
+    update_seal: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> Result<()> {
     // Load and parse the seal
     info!(path = %seal_path.display(), "Loading seal");
-
-    let seal_bytes = std::fs::read(&seal_path)
-        .with_context(|| format!("Failed to read seal file: {}", seal_path.display()))?;
-
-    let seal: VeritasSeal = VeritasSeal::from_cbor(&seal_bytes)
-        .or_else(|_| {
-            serde_json::from_slice(&seal_bytes)
-                .map_err(|e| veritas_core::VeritasError::SerializationError(e.to_string()))
-        })
-        .context("Failed to parse seal (tried CBOR and JSON)")?;
-
-    debug!(
-        format = if VeritasSeal::from_cbor(&seal_bytes).is_ok() {
-            "cbor"
-        } else {
-            "json"
-        },
-        "Parsed seal"
-    );
+    let seal = load_seal(&seal_path)?;
 
     // Compute the seal hash (hash of the content hash + signature prefix)
     let seal_hash = compute_seal_hash(&seal);
     info!(hash = %&seal_hash[..16], "Computed seal hash");
+
+    // Dry run: show what would be done and exit
+    if dry_run {
+        let memo_text = format!("VERITAS-Q:{}", seal_hash);
+        println!("{}", "[DRY RUN] Would perform the following:".cyan().bold());
+        println!();
+        println!("   {} {}", "Seal file:".dimmed(), seal_path.display());
+        println!("   {} {}", "Seal hash:".dimmed(), &seal_hash[..16]);
+        println!("   {} Solana Devnet", "Network:".dimmed());
+        println!("   {} {}", "RPC URL:".dimmed(), DEVNET_RPC_URL);
+        println!("   {} {} SOL", "Airdrop:".dimmed(), AIRDROP_SOL);
+        println!("   {} {}", "Memo:".dimmed(), memo_text);
+        println!(
+            "   {} {}",
+            "Update seal:".dimmed(),
+            if update_seal { "yes" } else { "no" }
+        );
+        return Ok(());
+    }
 
     // Generate a burner keypair
     let payer = Keypair::new();

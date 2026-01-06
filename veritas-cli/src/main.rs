@@ -9,9 +9,10 @@ use tracing_subscriber::EnvFilter;
 
 mod commands;
 mod exit_codes;
+mod utils;
 
 /// Output format for seal files.
-#[derive(Clone, Copy, Default, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
 pub enum OutputFormat {
     /// CBOR binary format (compact, recommended)
     #[default]
@@ -89,6 +90,10 @@ enum Commands {
         /// Save the generated keypair to this path (ignored if --keypair is set)
         #[arg(long, value_name = "PATH")]
         save_keypair: Option<PathBuf>,
+
+        /// Show what would be done without actually creating the seal
+        #[arg(short = 'n', long)]
+        dry_run: bool,
     },
 
     /// Verify a sealed file's authenticity
@@ -111,6 +116,10 @@ enum Commands {
         /// Update the seal file with the transaction ID
         #[arg(long)]
         update_seal: bool,
+
+        /// Show what would be done without sending the transaction
+        #[arg(short = 'n', long)]
+        dry_run: bool,
     },
 }
 
@@ -159,11 +168,25 @@ async fn main() -> ExitCode {
             r#mock,
             keypair,
             save_keypair,
-        } => commands::seal::execute(file, format, r#mock, keypair, save_keypair, cli.quiet).await,
-        Commands::Verify { file, seal } => commands::verify::execute(file, seal, cli.quiet).await,
-        Commands::Anchor { seal, update_seal } => {
-            commands::anchor::execute(seal, update_seal, cli.quiet).await
+            dry_run,
+        } => {
+            commands::seal::execute(
+                file,
+                format,
+                r#mock,
+                keypair,
+                save_keypair,
+                dry_run,
+                cli.quiet,
+            )
+            .await
         }
+        Commands::Verify { file, seal } => commands::verify::execute(file, seal, cli.quiet).await,
+        Commands::Anchor {
+            seal,
+            update_seal,
+            dry_run,
+        } => commands::anchor::execute(seal, update_seal, dry_run, cli.quiet).await,
     };
 
     match result {

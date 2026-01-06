@@ -113,7 +113,7 @@ Seal {
 
 ---
 
-## Phase 3: DX et Maintenabilité (Priorité Basse)
+## Phase 3: DX et Maintenabilité (Priorité Basse) ✅ DONE (partiel)
 
 ### 3.1 Extraction des helpers communs
 

@@ -1,19 +1,13 @@
 //! Verify command implementation.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
 use tracing::{debug, error, info};
-use veritas_core::{ContentVerificationResult, VeritasSeal};
+use veritas_core::ContentVerificationResult;
 
-/// Build the seal path from the original file path.
-fn build_seal_path(file: &Path) -> PathBuf {
-    file.with_extension(format!(
-        "{}.veritas",
-        file.extension().and_then(|e| e.to_str()).unwrap_or("bin")
-    ))
-}
+use crate::utils::{build_seal_path, format_timestamp, load_seal};
 
 /// Execute the verify command.
 pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>, quiet: bool) -> Result<()> {
@@ -26,22 +20,9 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>, quiet: bool) -> 
 
     info!(path = %file.display(), bytes = content.len(), "Read file");
 
-    // Read and parse the seal
-    let seal_bytes = std::fs::read(&seal_path)
-        .with_context(|| format!("Failed to read seal file: {}", seal_path.display()))?;
-
-    info!(path = %seal_path.display(), bytes = seal_bytes.len(), "Read seal");
-
-    // Try CBOR first, then JSON
-    let seal: VeritasSeal = if let Ok(seal) = VeritasSeal::from_cbor(&seal_bytes) {
-        debug!(format = "cbor", "Parsed seal");
-        seal
-    } else if let Ok(seal) = serde_json::from_slice(&seal_bytes) {
-        debug!(format = "json", "Parsed seal");
-        seal
-    } else {
-        bail!("Failed to parse seal file (tried CBOR and JSON)");
-    };
+    // Load and parse the seal
+    info!(path = %seal_path.display(), "Loading seal");
+    let seal = load_seal(&seal_path)?;
 
     // Verify signature and content in one call
     debug!("Verifying ML-DSA signature");
@@ -135,15 +116,5 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>, quiet: bool) -> 
             }
             bail!("Verification failed: {}", sig_result.description())
         }
-    }
-}
-
-fn format_timestamp(timestamp_ms: u64) -> String {
-    use chrono::{TimeZone, Utc};
-    let secs = (timestamp_ms / 1000) as i64;
-    let nsecs = ((timestamp_ms % 1000) * 1_000_000) as u32;
-    match Utc.timestamp_opt(secs, nsecs) {
-        chrono::LocalResult::Single(dt) => dt.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-        _ => format!("{}ms", timestamp_ms),
     }
 }

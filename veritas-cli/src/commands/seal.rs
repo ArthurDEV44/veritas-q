@@ -12,6 +12,7 @@ use veritas_core::{
     ZeroizingSecretKey, MLDSA65_PUBLIC_KEY_BYTES, MLDSA65_SECRET_KEY_BYTES,
 };
 
+use crate::utils::build_seal_path;
 use crate::OutputFormat;
 
 /// Keypair file format: public key (1952 bytes) || secret key (4032 bytes)
@@ -30,14 +31,6 @@ fn detect_media_type(path: &Path) -> MediaType {
         Some("mp3" | "wav" | "flac" | "aac" | "ogg" | "m4a") => MediaType::Audio,
         _ => MediaType::Image, // Default to image
     }
-}
-
-/// Build the seal output path from the original file path.
-fn build_seal_path(file: &Path) -> PathBuf {
-    file.with_extension(format!(
-        "{}.veritas",
-        file.extension().and_then(|e| e.to_str()).unwrap_or("bin")
-    ))
 }
 
 /// Load an ML-DSA-65 keypair from a file.
@@ -93,6 +86,7 @@ pub async fn execute(
     use_mock: bool,
     keypair_path: Option<PathBuf>,
     save_keypair_path: Option<PathBuf>,
+    dry_run: bool,
     quiet: bool,
 ) -> Result<()> {
     // Read the file content
@@ -104,6 +98,44 @@ pub async fn execute(
     // Detect media type
     let media_type = detect_media_type(&file);
     debug!(media_type = ?media_type, "Detected media type");
+
+    // Determine output path
+    let seal_path = build_seal_path(&file);
+
+    // Dry run: show what would be done and exit
+    if dry_run {
+        println!("{}", "[DRY RUN] Would perform the following:".cyan().bold());
+        println!();
+        println!("   {} {}", "Input file:".dimmed(), file.display());
+        println!("   {} {} bytes", "File size:".dimmed(), content.len());
+        println!("   {} {:?}", "Media type:".dimmed(), media_type);
+        println!("   {} {:?}", "Output format:".dimmed(), format);
+        println!("   {} {}", "Seal output:".dimmed(), seal_path.display());
+        println!(
+            "   {} {}",
+            "QRNG source:".dimmed(),
+            if use_mock {
+                "Mock (testing)"
+            } else {
+                "ANU QRNG"
+            }
+        );
+        println!(
+            "   {} {}",
+            "Keypair:".dimmed(),
+            if let Some(kp) = &keypair_path {
+                format!("load from {}", kp.display())
+            } else if save_keypair_path.is_some() {
+                "generate and save".to_string()
+            } else {
+                "generate (ephemeral)".to_string()
+            }
+        );
+        if let Some(save_path) = &save_keypair_path {
+            println!("   {} {}", "Save keypair to:".dimmed(), save_path.display());
+        }
+        return Ok(());
+    }
 
     // Load or generate keypair
     let (public_key, secret_key) = if let Some(kp_path) = &keypair_path {
@@ -152,9 +184,6 @@ pub async fn execute(
             }
         }
     };
-
-    // Determine output path
-    let seal_path = build_seal_path(&file);
 
     // Serialize and save
     match format {
