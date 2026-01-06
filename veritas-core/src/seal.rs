@@ -7,9 +7,9 @@ use zeroize::Zeroize;
 use crate::error::{Result, VeritasError, CURRENT_SEAL_VERSION, MAX_SEAL_SIZE};
 use crate::qrng::QrngSource;
 #[cfg(feature = "network")]
-use chrono::Utc;
-#[cfg(feature = "network")]
 use crate::qrng::QuantumEntropySource;
+#[cfg(feature = "network")]
+use chrono::Utc;
 
 /// Maximum allowed difference between entropy and capture timestamps (in seconds).
 #[cfg(feature = "network")]
