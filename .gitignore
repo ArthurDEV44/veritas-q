@@ -1,1 +1,26 @@
+# Build artifacts
 /target
+
+# Environment files (may contain secrets)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Solana keypairs (never commit private keys)
+*.json
+!package.json
+!tsconfig.json
+!/www/**/*.json
+
+# Logs
+*.log
