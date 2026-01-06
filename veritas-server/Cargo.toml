@@ -20,6 +20,8 @@ base64.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

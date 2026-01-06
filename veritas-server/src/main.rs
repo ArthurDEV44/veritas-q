@@ -13,9 +13,12 @@ use axum::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder, VeritasSeal};
 
 /// Response for successful seal creation
@@ -42,6 +45,7 @@ struct ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        tracing::error!(status = %self.status, error = %self.message, "API error");
         let body = serde_json::json!({
             "error": self.message
         });
@@ -273,16 +277,60 @@ pub fn create_router() -> Router {
     // Request body limit: 50MB
     let body_limit = RequestBodyLimitLayer::new(50 * 1024 * 1024);
 
+    // Request timeout: 30 seconds (protects against hanging QRNG requests)
+    let timeout =
+        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30));
+
     Router::new()
         .route("/seal", post(seal_handler))
         .route("/verify", post(verify_handler))
         .route("/health", axum::routing::get(health))
         .layer(cors)
         .layer(body_limit)
+        .layer(timeout)
+        .layer(TraceLayer::new_for_http())
+}
+
+/// Graceful shutdown signal handler
+///
+/// Waits for Ctrl+C or SIGTERM (Unix) to initiate graceful shutdown.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Shutdown signal received, draining connections...");
 }
 
 #[tokio::main]
 async fn main() {
+    // Initialize tracing subscriber with env filter (RUST_LOG)
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "veritas_server=info,tower_http=info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
     println!("╔════════════════════════════════════════════╗");
     println!("║     VERITAS-Q Truth API Server v0.1.0      ║");
     println!("║   Quantum-Authenticated Media Sealing      ║");
@@ -291,6 +339,11 @@ async fn main() {
     let app = create_router();
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+
+    tracing::info!("Listening on http://{}", addr);
+    tracing::info!("Endpoints: POST /seal, POST /verify, GET /health");
+    tracing::info!("Request timeout: 30s | Body limit: 50MB");
+
     println!("\nListening on http://{}", addr);
     println!("\nEndpoints:");
     println!("  POST /seal   - Create seal (multipart: file, media_type?, mock?)");
@@ -302,7 +355,12 @@ async fn main() {
     println!("    -F 'media_type=image'");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
+
+    tracing::info!("Server shutdown complete");
 }
 
 #[cfg(test)]
