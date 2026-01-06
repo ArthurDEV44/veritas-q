@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "REST API server exposing Veritas Q seal/verify operations"
 
+[lib]
+name = "veritas_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "veritas-server"
 path = "src/main.rs"
@@ -23,6 +27,8 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tower_governor.workspace = true
+utoipa.workspace = true
+utoipa-swagger-ui.workspace = true
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

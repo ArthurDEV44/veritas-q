@@ -5,23 +5,50 @@
 use axum::{extract::Multipart, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
+use utoipa::ToSchema;
 use veritas_core::{ContentVerificationResult, VeritasSeal};
 
 use crate::error::ApiError;
 use crate::validation::{validate_content_type, validate_file_size, DEFAULT_MAX_FILE_SIZE};
 
 /// Response for verification
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct VerifyResponse {
+    /// Whether the content is authentic (unmodified since sealing)
+    #[schema(example = true)]
     pub authentic: bool,
+    /// Human-readable details about the verification result
+    #[schema(
+        example = "Seal valid. Media type: Image, QRNG source: Anu, Captured: 2024-01-01T00:00:00Z"
+    )]
     pub details: String,
 }
 
-/// POST /verify - Verify a seal against content
+/// Verify a seal against content
 ///
 /// Accepts multipart/form-data with:
-/// - file: The media file to verify
-/// - seal_data: Base64-encoded CBOR seal
+/// - **file** (required): The media file to verify
+/// - **seal_data** (required): Base64-encoded CBOR seal from the /seal endpoint
+///
+/// Returns whether the content is authentic (unchanged since sealing) or has been tampered with.
+/// Verification checks:
+/// - Post-quantum signature validity (ML-DSA-65)
+/// - Content hash match (SHA3-256)
+/// - Seal structure integrity
+#[utoipa::path(
+    post,
+    path = "/verify",
+    tag = "Verification",
+    request_body(
+        content_type = "multipart/form-data",
+        description = "File and seal data to verify"
+    ),
+    responses(
+        (status = 200, description = "Verification completed", body = VerifyResponse),
+        (status = 400, description = "Invalid request (missing file, invalid seal format, etc.)"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyResponse>, ApiError> {
     let mut file_data: Option<Vec<u8>> = None;
     let mut seal_data: Option<String> = None;

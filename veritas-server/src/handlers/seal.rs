@@ -5,25 +5,53 @@
 use axum::{extract::Multipart, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
+use utoipa::ToSchema;
 use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder};
 
 use crate::error::ApiError;
 use crate::validation::{validate_content_type, validate_file_size, DEFAULT_MAX_FILE_SIZE};
 
 /// Response for successful seal creation
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct SealResponse {
+    /// Unique identifier for this seal
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub seal_id: String,
+    /// Base64-encoded CBOR seal data (contains signature, QRNG entropy, content hash)
+    #[schema(example = "omZzZWFsX2...")]
     pub seal_data: String,
+    /// Capture timestamp in milliseconds since Unix epoch
+    #[schema(example = 1704067200000_u64)]
     pub timestamp: u64,
 }
 
-/// POST /seal - Create a quantum-authenticated seal for uploaded content
+/// Create a quantum-authenticated seal for uploaded content
 ///
 /// Accepts multipart/form-data with:
-/// - file: The media file to seal
-/// - media_type (optional): "image", "video", or "audio" (default: "image")
-/// - mock (optional): "true" to use mock QRNG instead of ANU (for testing)
+/// - **file** (required): The media file to seal (max 25MB)
+/// - **media_type** (optional): "image", "video", "audio", or "generic" (default: "image")
+/// - **mock** (optional): "true" to use mock QRNG instead of ANU (for testing only)
+///
+/// The seal contains:
+/// - QRNG entropy (256 bits from quantum random number generator)
+/// - Content hash (SHA3-256 + optional perceptual hash for images)
+/// - Post-quantum signature (ML-DSA-65, FIPS 204)
+/// - Capture metadata (timestamp, media type)
+#[utoipa::path(
+    post,
+    path = "/seal",
+    tag = "Sealing",
+    request_body(
+        content_type = "multipart/form-data",
+        description = "Media file to seal with optional parameters"
+    ),
+    responses(
+        (status = 200, description = "Seal created successfully", body = SealResponse),
+        (status = 400, description = "Invalid request (missing file, unsupported format, etc.)"),
+        (status = 413, description = "File too large (max 25MB)"),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>, ApiError> {
     let mut file_data: Option<Vec<u8>> = None;
     let mut media_type = MediaType::Image;

@@ -5,15 +5,7 @@
 //! - POST /verify - Verify a seal against content
 //! - GET /health - Health check
 
-mod config;
-mod error;
-mod handlers;
-mod routes;
-mod validation;
-
-pub use config::Config;
-pub use error::ApiError;
-pub use routes::{create_router, create_router_with_config};
+use veritas_server::{create_router_with_config, Config};
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -70,6 +62,7 @@ async fn main() {
 
     tracing::info!("Listening on http://{}", addr);
     tracing::info!("Endpoints: POST /seal, POST /verify, GET /health, GET /ready");
+    tracing::info!("OpenAPI: GET /docs (Swagger UI), GET /api-docs/openapi.json");
     tracing::info!(
         "Timeout: {}s | Body limit: {}MB",
         config.timeout_secs,
@@ -82,6 +75,9 @@ async fn main() {
     println!("  POST /verify - Verify seal (multipart: file, seal_data)");
     println!("  GET  /health - Health check (JSON: status, version, qrng_available)");
     println!("  GET  /ready  - Kubernetes readiness probe");
+    println!("\nDocumentation:");
+    println!("  GET  /docs   - Swagger UI (interactive API documentation)");
+    println!("  GET  /api-docs/openapi.json - OpenAPI 3.0 specification");
     println!("\nConfiguration:");
     println!(
         "  Timeout: {}s | Body limit: {}MB",
@@ -113,13 +109,13 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
     use tower::ServiceExt;
+    use veritas_server::create_router;
 
     /// Helper to create multipart body for seal request
     fn create_seal_multipart(content: &[u8], media_type: &str, mock: bool) -> (String, Vec<u8>) {

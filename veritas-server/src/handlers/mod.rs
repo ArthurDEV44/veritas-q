@@ -2,10 +2,10 @@
 //!
 //! This module contains all the request handlers for the API endpoints.
 
-mod health;
-mod seal;
-mod verify;
+pub mod health;
+pub mod seal;
+pub mod verify;
 
-pub use health::{health, ready};
-pub use seal::seal_handler;
-pub use verify::verify_handler;
+pub use health::{health, ready, HealthResponse, ReadyResponse};
+pub use seal::{seal_handler, SealResponse};
+pub use verify::{verify_handler, VerifyResponse};

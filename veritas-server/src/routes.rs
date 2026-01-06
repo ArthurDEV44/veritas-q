@@ -17,9 +17,12 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::config::Config;
 use crate::handlers::{health, ready, seal_handler, verify_handler};
+use crate::openapi::ApiDoc;
 
 /// Create the application router with default config (for testing)
 pub fn create_router() -> Router {
@@ -70,6 +73,8 @@ pub fn create_router_with_config(config: &Config) -> Router {
         .route("/verify", post(verify_handler))
         .route("/health", get(health))
         .route("/ready", get(ready))
+        // OpenAPI documentation endpoints
+        .merge(SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors)
         .layer(body_limit)
         .layer(timeout)
