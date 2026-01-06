@@ -6,20 +6,127 @@
 
 use axum::{
     extract::Multipart,
-    http::StatusCode,
+    http::{header, Method, StatusCode},
     response::{IntoResponse, Response},
     routing::post,
     Json, Router,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder, VeritasSeal};
+
+/// Server configuration loaded from environment variables
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Server port (default: 3000)
+    pub port: u16,
+    /// Server host (default: 127.0.0.1)
+    pub host: [u8; 4],
+    /// Allowed CORS origins, comma-separated (default: allow all in dev)
+    pub allowed_origins: Option<Vec<String>>,
+    /// Request body limit in MB (default: 50)
+    pub body_limit_mb: usize,
+    /// Request timeout in seconds (default: 30)
+    pub timeout_secs: u64,
+    /// Enable rate limiting (default: false for tests, true when loaded from env)
+    pub rate_limit_enabled: bool,
+    /// Rate limit: requests per second (default: 10)
+    pub rate_limit_per_sec: u64,
+    /// Rate limit: burst size (default: 20)
+    pub rate_limit_burst: u32,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            port: 3000,
+            host: [127, 0, 0, 1],
+            allowed_origins: None, // None = allow all (dev mode)
+            body_limit_mb: 50,
+            timeout_secs: 30,
+            rate_limit_enabled: false, // Disabled by default (for tests)
+            rate_limit_per_sec: 10,
+            rate_limit_burst: 20,
+        }
+    }
+}
+
+impl Config {
+    /// Load configuration from environment variables
+    pub fn from_env() -> Self {
+        let port = std::env::var("PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3000);
+
+        let host = std::env::var("HOST")
+            .ok()
+            .map(|h| {
+                if h == "0.0.0.0" {
+                    [0, 0, 0, 0]
+                } else {
+                    [127, 0, 0, 1]
+                }
+            })
+            .unwrap_or([127, 0, 0, 1]);
+
+        let allowed_origins = std::env::var("ALLOWED_ORIGINS").ok().map(|origins| {
+            origins
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        });
+
+        let body_limit_mb = std::env::var("BODY_LIMIT_MB")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(50);
+
+        let timeout_secs = std::env::var("REQUEST_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+
+        let rate_limit_per_sec = std::env::var("RATE_LIMIT_PER_SEC")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+
+        let rate_limit_burst = std::env::var("RATE_LIMIT_BURST")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20);
+
+        // Rate limiting enabled by default in production, can be disabled with RATE_LIMIT_ENABLED=false
+        let rate_limit_enabled = std::env::var("RATE_LIMIT_ENABLED")
+            .map(|v| v.to_lowercase() != "false")
+            .unwrap_or(true);
+
+        Self {
+            port,
+            host,
+            allowed_origins,
+            body_limit_mb,
+            timeout_secs,
+            rate_limit_enabled,
+            rate_limit_per_sec,
+            rate_limit_burst,
+        }
+    }
+
+    /// Get socket address from config
+    pub fn socket_addr(&self) -> SocketAddr {
+        SocketAddr::from((self.host, self.port))
+    }
+}
 
 /// Response for successful seal creation
 #[derive(Serialize)]
@@ -266,29 +373,71 @@ async fn health() -> &'static str {
     "OK"
 }
 
-/// Create the application router (exposed for testing)
+/// Create the application router with default config (for testing)
 pub fn create_router() -> Router {
-    // Configure CORS to allow all origins (for development)
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    create_router_with_config(&Config::default())
+}
 
-    // Request body limit: 50MB
-    let body_limit = RequestBodyLimitLayer::new(50 * 1024 * 1024);
+/// Create the application router with custom configuration
+pub fn create_router_with_config(config: &Config) -> Router {
+    // Configure CORS based on allowed_origins
+    let cors = match &config.allowed_origins {
+        Some(origins) if !origins.is_empty() => {
+            let origins: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+            tracing::info!("CORS: Restricting to {} origin(s)", origins.len());
+            CorsLayer::new()
+                .allow_origin(origins)
+                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
+        }
+        _ => {
+            tracing::warn!("CORS: Allowing all origins (dev mode)");
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any)
+        }
+    };
 
-    // Request timeout: 30 seconds (protects against hanging QRNG requests)
-    let timeout =
-        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30));
+    // Request body limit
+    let body_limit = RequestBodyLimitLayer::new(config.body_limit_mb * 1024 * 1024);
 
-    Router::new()
+    // Request timeout
+    let timeout = TimeoutLayer::with_status_code(
+        StatusCode::REQUEST_TIMEOUT,
+        Duration::from_secs(config.timeout_secs),
+    );
+
+    // Base router with common layers
+    let router = Router::new()
         .route("/seal", post(seal_handler))
         .route("/verify", post(verify_handler))
         .route("/health", axum::routing::get(health))
         .layer(cors)
         .layer(body_limit)
-        .layer(timeout)
-        .layer(TraceLayer::new_for_http())
+        .layer(timeout);
+
+    // Conditionally apply rate limiting (disabled in tests, enabled in production)
+    if config.rate_limit_enabled {
+        let governor_conf = GovernorConfigBuilder::default()
+            .per_second(config.rate_limit_per_sec)
+            .burst_size(config.rate_limit_burst)
+            .finish()
+            .expect("Failed to build rate limiter config");
+
+        tracing::info!(
+            "Rate limiting: {} req/s (burst: {})",
+            config.rate_limit_per_sec,
+            config.rate_limit_burst
+        );
+
+        router
+            .layer(GovernorLayer::new(Arc::new(governor_conf)))
+            .layer(TraceLayer::new_for_http())
+    } else {
+        tracing::warn!("Rate limiting: DISABLED");
+        router.layer(TraceLayer::new_for_http())
+    }
 }
 
 /// Graceful shutdown signal handler
@@ -331,28 +480,46 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Load configuration from environment
+    let config = Config::from_env();
+    let addr = config.socket_addr();
+
     println!("╔════════════════════════════════════════════╗");
     println!("║     VERITAS-Q Truth API Server v0.1.0      ║");
     println!("║   Quantum-Authenticated Media Sealing      ║");
     println!("╚════════════════════════════════════════════╝");
 
-    let app = create_router();
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let app = create_router_with_config(&config);
 
     tracing::info!("Listening on http://{}", addr);
     tracing::info!("Endpoints: POST /seal, POST /verify, GET /health");
-    tracing::info!("Request timeout: 30s | Body limit: 50MB");
+    tracing::info!(
+        "Timeout: {}s | Body limit: {}MB",
+        config.timeout_secs,
+        config.body_limit_mb
+    );
 
     println!("\nListening on http://{}", addr);
     println!("\nEndpoints:");
     println!("  POST /seal   - Create seal (multipart: file, media_type?, mock?)");
     println!("  POST /verify - Verify seal (multipart: file, seal_data)");
     println!("  GET  /health - Health check");
-    println!("\nExample:");
-    println!("  curl -X POST http://127.0.0.1:3000/seal \\");
-    println!("    -F 'file=@image.jpg' \\");
-    println!("    -F 'media_type=image'");
+    println!("\nConfiguration:");
+    println!(
+        "  Timeout: {}s | Body limit: {}MB",
+        config.timeout_secs, config.body_limit_mb
+    );
+    if config.rate_limit_enabled {
+        println!(
+            "  Rate limit: {} req/s (burst: {})",
+            config.rate_limit_per_sec, config.rate_limit_burst
+        );
+    } else {
+        println!("  Rate limit: DISABLED");
+    }
+    println!("\nEnvironment variables:");
+    println!("  PORT, HOST, ALLOWED_ORIGINS, BODY_LIMIT_MB, REQUEST_TIMEOUT_SECS,");
+    println!("  RATE_LIMIT_ENABLED, RATE_LIMIT_PER_SEC, RATE_LIMIT_BURST");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app)
