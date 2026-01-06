@@ -44,8 +44,9 @@ pub mod seal;
 pub use error::{Result, VeritasError, CURRENT_SEAL_VERSION, MAX_SEAL_SIZE};
 pub use qrng::QrngSource;
 pub use seal::{
-    generate_keypair, generate_keypair_raw, BlockchainAnchor, ContentHash, DeviceAttestation,
-    MediaType, VeritasSeal, ZeroizingSecretKey,
+    generate_keypair, generate_keypair_raw, BlockchainAnchor, ContentHash,
+    ContentVerificationResult, DeviceAttestation, MediaType, VerificationResult, VeritasSeal,
+    ZeroizingSecretKey,
 };
 
 #[cfg(feature = "network")]

@@ -4,7 +4,7 @@
 //! directly in the browser without sending files to a server.
 
 use serde::{Deserialize, Serialize};
-use veritas_core::{ContentHash, VeritasSeal};
+use veritas_core::{ContentVerificationResult as CoreVerificationResult, VeritasSeal};
 use wasm_bindgen::prelude::*;
 
 /// Initialize panic hook for better error messages in browser console.
@@ -72,15 +72,9 @@ fn verify_internal(file_bytes: &[u8], seal_bytes: &[u8]) -> Result<VerificationR
         .or_else(|_| serde_json::from_slice(seal_bytes).map_err(|e| e.to_string()))
         .map_err(|e| format!("Failed to parse seal: {}", e))?;
 
-    // Compute content hash of the file
-    let actual_hash = ContentHash::from_bytes(file_bytes);
-
-    // Check if content hash matches
-    let content_matches = seal.content_hash.crypto_hash == actual_hash.crypto_hash;
-
-    // Verify the ML-DSA signature
-    let signature_valid = seal
-        .verify()
+    // Verify signature and content in one call
+    let result = seal
+        .verify_content(file_bytes)
         .map_err(|e| format!("Verification error: {}", e))?;
 
     // Format timestamp
@@ -92,15 +86,29 @@ fn verify_internal(file_bytes: &[u8], seal_bytes: &[u8]) -> Result<VerificationR
     // Format media type
     let media_type = format!("{:?}", seal.media_type);
 
+    // Map core result to wasm result
+    let (valid, content_matches, actual_hash, error) = match &result {
+        CoreVerificationResult::Authentic => (true, true, seal.content_hash.crypto_hash, None),
+        CoreVerificationResult::ContentModified { actual_hash, .. } => {
+            (false, false, *actual_hash, None)
+        }
+        CoreVerificationResult::SignatureFailed(sig_result) => (
+            false,
+            true, // Content check skipped when signature fails
+            seal.content_hash.crypto_hash,
+            Some(sig_result.description().to_string()),
+        ),
+    };
+
     Ok(VerificationResult {
-        valid: signature_valid && content_matches,
+        valid,
         content_matches,
         timestamp,
-        content_hash: hex::encode(actual_hash.crypto_hash),
+        content_hash: hex::encode(actual_hash),
         expected_hash: hex::encode(seal.content_hash.crypto_hash),
         qrng_source,
         media_type,
-        error: None,
+        error,
     })
 }
 

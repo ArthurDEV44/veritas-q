@@ -266,7 +266,7 @@ Ajouter un module `c2pa.rs` pour l'export/import JUMBF.
 - [x] Phase 1.3 : Champ version (`CURRENT_SEAL_VERSION = 1`)
 - [x] Phase 2.1 : try_from pour timestamps
 - [x] Phase 2.2 : Drift bidirectionnel (`abs_diff`)
-- [ ] Phase 2.3 : VerificationResult enum
+- [x] Phase 2.3 : VerificationResult enum + ContentVerificationResult + verify_content()
 - [ ] Phase 3.1 : Tableaux fixes signatures
 - [x] Phase 3.2 : Pré-allocation buffers
 - [ ] Phase 3.3 : Éviter clone QrngSource

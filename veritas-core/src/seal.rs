@@ -59,6 +59,76 @@ impl std::fmt::Debug for ZeroizingSecretKey {
     }
 }
 
+/// Result of seal verification with detailed failure information.
+///
+/// This enum provides more granular information about verification failures
+/// compared to a simple boolean result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerificationResult {
+    /// Signature is valid and payload matches
+    Valid,
+    /// ML-DSA signature verification failed (forged or corrupted seal)
+    InvalidSignature,
+    /// Signature valid but signed payload doesn't match reconstructed payload
+    PayloadMismatch,
+    /// Public key in seal is malformed
+    InvalidPublicKey,
+    /// Signature format is malformed
+    MalformedSignature,
+}
+
+impl VerificationResult {
+    /// Returns true if verification succeeded.
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        matches!(self, Self::Valid)
+    }
+
+    /// Returns a human-readable description of the result.
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Valid => "Signature is valid",
+            Self::InvalidSignature => "Signature verification failed - seal may be forged",
+            Self::PayloadMismatch => "Payload mismatch - seal data may have been modified",
+            Self::InvalidPublicKey => "Public key in seal is malformed",
+            Self::MalformedSignature => "Signature format is invalid",
+        }
+    }
+}
+
+/// Result of full content verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContentVerificationResult {
+    /// Both signature and content hash are valid
+    Authentic,
+    /// Signature valid but content has been modified
+    ContentModified {
+        expected_hash: [u8; 32],
+        actual_hash: [u8; 32],
+    },
+    /// Signature verification failed
+    SignatureFailed(VerificationResult),
+}
+
+impl ContentVerificationResult {
+    /// Returns true if content is fully authentic.
+    #[inline]
+    pub fn is_authentic(&self) -> bool {
+        matches!(self, Self::Authentic)
+    }
+
+    /// Returns a human-readable description of the result.
+    pub fn description(&self) -> String {
+        match self {
+            Self::Authentic => "Content is authentic - signature valid and hash matches".into(),
+            Self::ContentModified { .. } => {
+                "Content has been modified since sealing - hash mismatch".into()
+            }
+            Self::SignatureFailed(result) => result.description().into(),
+        }
+    }
+}
+
 /// Device attestation information from TEE.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceAttestation {
@@ -300,7 +370,20 @@ struct SignablePayload<'a> {
 
 impl VeritasSeal {
     /// Verify the seal's signature is valid.
+    ///
+    /// Returns `Ok(true)` if valid, `Ok(false)` if invalid.
+    /// Returns `Err` only for serialization errors.
+    ///
+    /// For more detailed failure information, use [`verify_detailed`].
     pub fn verify(&self) -> Result<bool> {
+        self.verify_detailed().map(|result| result.is_valid())
+    }
+
+    /// Verify the seal's signature with detailed result information.
+    ///
+    /// Unlike [`verify`], this method distinguishes between different
+    /// failure modes (invalid signature, payload mismatch, malformed keys).
+    pub fn verify_detailed(&self) -> Result<VerificationResult> {
         // Reconstruct the signable payload
         let signable = SignablePayload {
             capture_timestamp_utc: self.capture_timestamp_utc,
@@ -313,29 +396,58 @@ impl VeritasSeal {
             media_type: self.media_type,
         };
 
-        // Serialize to CBOR
-        let mut signable_bytes = Vec::new();
+        // Serialize to CBOR (pre-allocate buffer)
+        let mut signable_bytes = Vec::with_capacity(512);
         ciborium::into_writer(&signable, &mut signable_bytes)
             .map_err(|e| VeritasError::SerializationError(e.to_string()))?;
 
         // Reconstruct public key
-        let public_key = mldsa65::PublicKey::from_bytes(&self.public_key)
-            .map_err(|_| VeritasError::SignatureError("Invalid public key".into()))?;
+        let public_key = match mldsa65::PublicKey::from_bytes(&self.public_key) {
+            Ok(pk) => pk,
+            Err(_) => return Ok(VerificationResult::InvalidPublicKey),
+        };
 
-        // Verify signature
-        let signed_message = mldsa65::SignedMessage::from_bytes(&self.signature)
-            .map_err(|_| VeritasError::SignatureError("Invalid signature format".into()))?;
+        // Verify signature format
+        let signed_message = match mldsa65::SignedMessage::from_bytes(&self.signature) {
+            Ok(sm) => sm,
+            Err(_) => return Ok(VerificationResult::MalformedSignature),
+        };
 
+        // Verify ML-DSA signature
         match mldsa65::open(&signed_message, &public_key) {
             Ok(verified_message) => {
-                // Check that the verified message matches our signable payload
                 if verified_message == signable_bytes {
-                    Ok(true)
+                    Ok(VerificationResult::Valid)
                 } else {
-                    Ok(false)
+                    Ok(VerificationResult::PayloadMismatch)
                 }
             }
-            Err(_) => Ok(false),
+            Err(_) => Ok(VerificationResult::InvalidSignature),
+        }
+    }
+
+    /// Verify both the seal's signature and that the content matches.
+    ///
+    /// This is a convenience method that combines signature verification
+    /// with content hash validation in a single call.
+    pub fn verify_content(&self, content: &[u8]) -> Result<ContentVerificationResult> {
+        // First verify the signature
+        let sig_result = self.verify_detailed()?;
+
+        if !sig_result.is_valid() {
+            return Ok(ContentVerificationResult::SignatureFailed(sig_result));
+        }
+
+        // Then verify content hash
+        let actual_hash = ContentHash::from_bytes(content);
+
+        if self.content_hash.crypto_hash == actual_hash.crypto_hash {
+            Ok(ContentVerificationResult::Authentic)
+        } else {
+            Ok(ContentVerificationResult::ContentModified {
+                expected_hash: self.content_hash.crypto_hash,
+                actual_hash: actual_hash.crypto_hash,
+            })
         }
     }
 
@@ -497,5 +609,145 @@ mod tests {
             Err(VeritasError::UnsupportedSealVersion(v, current))
             if v == CURRENT_SEAL_VERSION + 1 && current == CURRENT_SEAL_VERSION
         ));
+    }
+
+    #[tokio::test]
+    async fn test_verify_detailed_returns_valid() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test content".to_vec();
+        let seal = SealBuilder::new(content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        let result = seal.verify_detailed().expect("Verification failed");
+        assert_eq!(result, VerificationResult::Valid);
+        assert!(result.is_valid());
+    }
+
+    #[tokio::test]
+    async fn test_verify_detailed_payload_mismatch() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test content".to_vec();
+        let mut seal = SealBuilder::new(content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Tamper with payload data (not signature itself)
+        seal.content_hash.crypto_hash[0] ^= 0xFF;
+
+        let result = seal.verify_detailed().expect("Verification failed");
+        assert_eq!(result, VerificationResult::PayloadMismatch);
+        assert!(!result.is_valid());
+    }
+
+    #[tokio::test]
+    async fn test_verify_detailed_invalid_public_key() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test content".to_vec();
+        let mut seal = SealBuilder::new(content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Corrupt public key
+        seal.public_key = vec![0xFF; 10];
+
+        let result = seal.verify_detailed().expect("Verification failed");
+        assert_eq!(result, VerificationResult::InvalidPublicKey);
+    }
+
+    #[tokio::test]
+    async fn test_verify_detailed_corrupted_signature() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test content".to_vec();
+        let mut seal = SealBuilder::new(content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Corrupt signature bytes (keeps same length)
+        seal.signature[0] ^= 0xFF;
+        seal.signature[100] ^= 0xFF;
+
+        let result = seal.verify_detailed().expect("Verification failed");
+        // Corrupted signatures fail as InvalidSignature (pqcrypto behavior)
+        assert!(!result.is_valid());
+        assert!(matches!(
+            result,
+            VerificationResult::InvalidSignature | VerificationResult::MalformedSignature
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_verify_content_authentic() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Original content".to_vec();
+        let seal = SealBuilder::new(content.clone(), MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        let result = seal.verify_content(&content).expect("Verification failed");
+        assert_eq!(result, ContentVerificationResult::Authentic);
+        assert!(result.is_authentic());
+    }
+
+    #[tokio::test]
+    async fn test_verify_content_modified() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let original_content = b"Original content".to_vec();
+        let seal = SealBuilder::new(original_content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Verify against modified content
+        let modified_content = b"Modified content".to_vec();
+        let result = seal
+            .verify_content(&modified_content)
+            .expect("Verification failed");
+
+        assert!(matches!(
+            result,
+            ContentVerificationResult::ContentModified { .. }
+        ));
+        assert!(!result.is_authentic());
+    }
+
+    #[tokio::test]
+    async fn test_verify_content_signature_failed() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test content".to_vec();
+        let mut seal = SealBuilder::new(content.clone(), MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Corrupt signature bytes
+        seal.signature[0] ^= 0xFF;
+        seal.signature[100] ^= 0xFF;
+
+        let result = seal.verify_content(&content).expect("Verification failed");
+        assert!(matches!(
+            result,
+            ContentVerificationResult::SignatureFailed(_)
+        ));
+        assert!(!result.is_authentic());
     }
 }

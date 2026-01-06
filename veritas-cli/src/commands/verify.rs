@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
-use veritas_core::{ContentHash, VeritasSeal};
+use veritas_core::{ContentVerificationResult, VeritasSeal};
 
 /// Execute the verify command.
 pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
@@ -43,59 +43,49 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
         bail!("Failed to parse seal file (tried CBOR and JSON)");
     };
 
-    // Compute content hash of the current file
-    let current_hash = ContentHash::from_bytes(&content);
-
-    // Verify signature
+    // Verify signature and content in one call
     println!("{}", "🔐 Verifying ML-DSA signature...".dimmed());
-    let signature_valid = seal.verify().context("Signature verification failed")?;
-
-    // Verify content hash matches
-    let hash_matches = seal.content_hash.crypto_hash == current_hash.crypto_hash;
+    let result = seal
+        .verify_content(&content)
+        .context("Verification failed")?;
 
     println!();
 
-    if signature_valid && hash_matches {
-        println!("{}", "╔════════════════════════════════════════╗".green());
-        println!(
-            "{}",
-            "║         ✅ AUTHENTIC                   ║".green().bold()
-        );
-        println!("{}", "╚════════════════════════════════════════╝".green());
-        println!();
-        println!(
-            "   {} {}",
-            "Signature:".dimmed(),
-            "Valid (ML-DSA-65)".green()
-        );
-        println!("   {} {}", "Content:".dimmed(), "Matches original".green());
-        println!("   {} {:?}", "QRNG source:".dimmed(), seal.qrng_source);
-        println!(
-            "   {} {}",
-            "Sealed at:".dimmed(),
-            format_timestamp(seal.capture_timestamp_utc)
-        );
-        Ok(())
-    } else {
-        println!("{}", "╔════════════════════════════════════════╗".red());
-        println!(
-            "{}",
-            "║         ❌ TAMPERED                    ║".red().bold()
-        );
-        println!("{}", "╚════════════════════════════════════════╝".red());
-        println!();
-
-        if !signature_valid {
+    match result {
+        ContentVerificationResult::Authentic => {
+            println!("{}", "╔════════════════════════════════════════╗".green());
+            println!(
+                "{}",
+                "║         ✅ AUTHENTIC                   ║".green().bold()
+            );
+            println!("{}", "╚════════════════════════════════════════╝".green());
+            println!();
             println!(
                 "   {} {}",
                 "Signature:".dimmed(),
-                "INVALID - seal may be forged".red()
+                "Valid (ML-DSA-65)".green()
             );
-        } else {
-            println!("   {} {}", "Signature:".dimmed(), "Valid".green());
+            println!("   {} {}", "Content:".dimmed(), "Matches original".green());
+            println!("   {} {:?}", "QRNG source:".dimmed(), seal.qrng_source);
+            println!(
+                "   {} {}",
+                "Sealed at:".dimmed(),
+                format_timestamp(seal.capture_timestamp_utc)
+            );
+            Ok(())
         }
-
-        if !hash_matches {
+        ContentVerificationResult::ContentModified {
+            expected_hash,
+            actual_hash,
+        } => {
+            println!("{}", "╔════════════════════════════════════════╗".red());
+            println!(
+                "{}",
+                "║         ❌ TAMPERED                    ║".red().bold()
+            );
+            println!("{}", "╚════════════════════════════════════════╝".red());
+            println!();
+            println!("   {} {}", "Signature:".dimmed(), "Valid".green());
             println!(
                 "   {} {}",
                 "Content:".dimmed(),
@@ -104,18 +94,26 @@ pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
             println!(
                 "   {} {}",
                 "Expected:".dimmed(),
-                hex::encode(&seal.content_hash.crypto_hash[..8])
+                hex::encode(&expected_hash[..8])
             );
+            println!("   {} {}", "Got:".dimmed(), hex::encode(&actual_hash[..8]));
+            bail!("Verification failed: content has been modified")
+        }
+        ContentVerificationResult::SignatureFailed(sig_result) => {
+            println!("{}", "╔════════════════════════════════════════╗".red());
+            println!(
+                "{}",
+                "║         ❌ TAMPERED                    ║".red().bold()
+            );
+            println!("{}", "╚════════════════════════════════════════╝".red());
+            println!();
             println!(
                 "   {} {}",
-                "Got:".dimmed(),
-                hex::encode(&current_hash.crypto_hash[..8])
+                "Signature:".dimmed(),
+                sig_result.description().red()
             );
-        } else {
-            println!("   {} {}", "Content:".dimmed(), "Matches".green());
+            bail!("Verification failed: {}", sig_result.description())
         }
-
-        bail!("Verification failed: file has been tampered with");
     }
 }
 

@@ -5,7 +5,7 @@
 use axum::{extract::Multipart, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
-use veritas_core::{ContentHash, VeritasSeal};
+use veritas_core::{ContentVerificationResult, VeritasSeal};
 
 use crate::error::ApiError;
 use crate::validation::{validate_content_type, validate_file_size, DEFAULT_MAX_FILE_SIZE};
@@ -76,17 +76,13 @@ pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyRespo
     let seal = VeritasSeal::from_cbor(&seal_cbor)
         .map_err(|e| ApiError::bad_request(format!("Invalid seal format: {}", e)))?;
 
-    // Verify the signature
-    let signature_valid = seal
-        .verify()
+    // Verify signature and content in one call
+    let result = seal
+        .verify_content(&content)
         .map_err(|e| ApiError::internal(format!("Verification error: {}", e)))?;
 
-    // Verify content hash matches
-    let content_hash = ContentHash::from_bytes(&content);
-    let content_matches = content_hash.crypto_hash == seal.content_hash.crypto_hash;
-
-    let (authentic, details) = if signature_valid && content_matches {
-        (
+    let (authentic, details) = match result {
+        ContentVerificationResult::Authentic => (
             true,
             format!(
                 "Seal valid. Media type: {:?}, QRNG source: {:?}, Captured: {}",
@@ -96,17 +92,14 @@ pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyRespo
                     .map(|dt| dt.to_rfc3339())
                     .unwrap_or_else(|| "unknown".to_string())
             ),
-        )
-    } else if !signature_valid {
-        (
-            false,
-            "Signature verification failed - seal may be tampered".into(),
-        )
-    } else {
-        (
+        ),
+        ContentVerificationResult::ContentModified { .. } => (
             false,
             "Content hash mismatch - file has been modified since sealing".into(),
-        )
+        ),
+        ContentVerificationResult::SignatureFailed(sig_result) => {
+            (false, sig_result.description().into())
+        }
     };
 
     Ok(Json(VerifyResponse { authentic, details }))
