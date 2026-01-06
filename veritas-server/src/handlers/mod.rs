@@ -6,6 +6,6 @@ mod health;
 mod seal;
 mod verify;
 
-pub use health::health;
+pub use health::{health, ready};
 pub use seal::seal_handler;
 pub use verify::verify_handler;

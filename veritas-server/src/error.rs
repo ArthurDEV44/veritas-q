@@ -1,55 +1,102 @@
 //! API error handling module
 //!
-//! Provides a unified error type for all API endpoints.
+//! Provides a unified error type for all API endpoints with structured error variants.
 
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
+use thiserror::Error;
 
-/// API error type for handling errors in request handlers
-#[derive(Debug)]
-pub struct ApiError {
-    pub status: StatusCode,
-    pub message: String,
+/// API error type with structured variants for different error categories
+#[derive(Debug, Error)]
+pub enum ApiError {
+    /// Bad request - client provided invalid input
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
+    /// Request timeout - operation took too long
+    #[error("Request timeout: {0}")]
+    Timeout(String),
+
+    /// Internal server error - unexpected server-side failure
+    #[error("Internal error: {0}")]
+    Internal(String),
+
+    /// Veritas core error - error from the cryptographic library
+    #[error("Veritas error: {0}")]
+    Veritas(#[from] veritas_core::VeritasError),
 }
 
 impl ApiError {
-    /// Create a new API error with the given status and message
-    pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self {
-            status,
-            message: message.into(),
-        }
-    }
-
     /// Create a bad request error
     pub fn bad_request(message: impl Into<String>) -> Self {
-        Self::new(StatusCode::BAD_REQUEST, message)
+        Self::BadRequest(message.into())
     }
 
     /// Create an internal server error
     pub fn internal(message: impl Into<String>) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, message)
+        Self::Internal(message.into())
+    }
+
+    /// Create a timeout error
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self::Timeout(message.into())
+    }
+
+    /// Get the HTTP status code for this error
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Timeout(_) => StatusCode::REQUEST_TIMEOUT,
+            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Veritas(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// Get the error category for logging
+    fn error_category(&self) -> &'static str {
+        match self {
+            Self::BadRequest(_) => "bad_request",
+            Self::Timeout(_) => "timeout",
+            Self::Internal(_) => "internal",
+            Self::Veritas(_) => "veritas",
+        }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        tracing::error!(status = %self.status, error = %self.message, "API error");
-        let body = serde_json::json!({
-            "error": self.message
-        });
-        (self.status, Json(body)).into_response()
-    }
-}
+        let status = self.status_code();
+        let category = self.error_category();
+        let message = self.to_string();
 
-impl From<veritas_core::VeritasError> for ApiError {
-    fn from(err: veritas_core::VeritasError) -> Self {
-        ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: err.to_string(),
+        // Log based on severity
+        match &self {
+            Self::BadRequest(_) => {
+                tracing::warn!(
+                    status = %status,
+                    category = category,
+                    error = %message,
+                    "Client error"
+                );
+            }
+            Self::Timeout(_) | Self::Internal(_) | Self::Veritas(_) => {
+                tracing::error!(
+                    status = %status,
+                    category = category,
+                    error = %message,
+                    "Server error"
+                );
+            }
         }
+
+        let body = serde_json::json!({
+            "error": message,
+            "category": category
+        });
+
+        (status, Json(body)).into_response()
     }
 }

@@ -49,7 +49,7 @@ spl-memo = "5"
 
 # Web server dependencies
 axum = { version = "0.8", features = ["multipart"] }
-tower-http = { version = "0.6", features = ["cors", "limit", "trace", "timeout"] }
+tower-http = { version = "0.6", features = ["cors", "limit", "trace", "timeout", "request-id", "propagate-header"] }
 
 # Observability
 tracing = "0.1"

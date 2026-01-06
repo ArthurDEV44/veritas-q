@@ -2,7 +2,7 @@
 //!
 //! Handles POST /verify requests to verify seals against content.
 
-use axum::{extract::Multipart, http::StatusCode, Json};
+use axum::{extract::Multipart, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
 use veritas_core::{ContentHash, VeritasSeal};
@@ -26,10 +26,11 @@ pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyRespo
     let mut seal_data: Option<String> = None;
 
     // Parse multipart form
-    while let Some(field) = multipart.next_field().await.map_err(|e| ApiError {
-        status: StatusCode::BAD_REQUEST,
-        message: format!("Failed to parse multipart: {}", e),
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::bad_request(format!("Failed to parse multipart: {}", e)))?
+    {
         let name = field.name().unwrap_or("").to_string();
 
         match name.as_str() {
@@ -38,50 +39,38 @@ pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyRespo
                     field
                         .bytes()
                         .await
-                        .map_err(|e| ApiError {
-                            status: StatusCode::BAD_REQUEST,
-                            message: format!("Failed to read file: {}", e),
-                        })?
+                        .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?
                         .to_vec(),
                 );
             }
             "seal_data" => {
-                seal_data = Some(field.text().await.map_err(|e| ApiError {
-                    status: StatusCode::BAD_REQUEST,
-                    message: format!("Failed to read seal_data: {}", e),
+                seal_data = Some(field.text().await.map_err(|e| {
+                    ApiError::bad_request(format!("Failed to read seal_data: {}", e))
                 })?);
             }
             _ => {}
         }
     }
 
-    let content = file_data.ok_or_else(|| ApiError {
-        status: StatusCode::BAD_REQUEST,
-        message: "No file provided. Use 'file' field in multipart form.".into(),
+    let content = file_data.ok_or_else(|| {
+        ApiError::bad_request("No file provided. Use 'file' field in multipart form.")
     })?;
 
-    let seal_b64 = seal_data.ok_or_else(|| ApiError {
-        status: StatusCode::BAD_REQUEST,
-        message: "No seal_data provided.".into(),
-    })?;
+    let seal_b64 = seal_data.ok_or_else(|| ApiError::bad_request("No seal_data provided."))?;
 
     // Decode seal from base64
-    let seal_cbor = BASE64.decode(&seal_b64).map_err(|e| ApiError {
-        status: StatusCode::BAD_REQUEST,
-        message: format!("Invalid base64 in seal_data: {}", e),
-    })?;
+    let seal_cbor = BASE64
+        .decode(&seal_b64)
+        .map_err(|e| ApiError::bad_request(format!("Invalid base64 in seal_data: {}", e)))?;
 
     // Deserialize seal from CBOR
-    let seal = VeritasSeal::from_cbor(&seal_cbor).map_err(|e| ApiError {
-        status: StatusCode::BAD_REQUEST,
-        message: format!("Invalid seal format: {}", e),
-    })?;
+    let seal = VeritasSeal::from_cbor(&seal_cbor)
+        .map_err(|e| ApiError::bad_request(format!("Invalid seal format: {}", e)))?;
 
     // Verify the signature
-    let signature_valid = seal.verify().map_err(|e| ApiError {
-        status: StatusCode::INTERNAL_SERVER_ERROR,
-        message: format!("Verification error: {}", e),
-    })?;
+    let signature_valid = seal
+        .verify()
+        .map_err(|e| ApiError::internal(format!("Verification error: {}", e)))?;
 
     // Verify content hash matches
     let content_hash = ContentHash::from_bytes(&content);

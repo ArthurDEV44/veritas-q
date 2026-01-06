@@ -12,11 +12,12 @@ use axum::{
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::timeout::TimeoutLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 
 use crate::config::Config;
-use crate::handlers::{health, seal_handler, verify_handler};
+use crate::handlers::{health, ready, seal_handler, verify_handler};
 
 /// Create the application router with default config (for testing)
 pub fn create_router() -> Router {
@@ -53,14 +54,26 @@ pub fn create_router_with_config(config: &Config) -> Router {
         Duration::from_secs(config.timeout_secs),
     );
 
+    // Request ID header name
+    let x_request_id = axum::http::HeaderName::from_static("x-request-id");
+
+    // Trace layer with request ID in spans
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(DefaultMakeSpan::new().include_headers(true))
+        .on_response(DefaultOnResponse::new().include_headers(true));
+
     // Base router with common layers
     let router = Router::new()
         .route("/seal", post(seal_handler))
         .route("/verify", post(verify_handler))
         .route("/health", get(health))
+        .route("/ready", get(ready))
         .layer(cors)
         .layer(body_limit)
-        .layer(timeout);
+        .layer(timeout)
+        // Request ID layers - set ID on incoming request, propagate to response
+        .layer(PropagateRequestIdLayer::new(x_request_id.clone()))
+        .layer(SetRequestIdLayer::new(x_request_id, MakeRequestUuid));
 
     // Conditionally apply rate limiting (disabled in tests, enabled in production)
     if config.rate_limit_enabled {
@@ -78,9 +91,9 @@ pub fn create_router_with_config(config: &Config) -> Router {
 
         router
             .layer(GovernorLayer::new(Arc::new(governor_conf)))
-            .layer(TraceLayer::new_for_http())
+            .layer(trace_layer)
     } else {
         tracing::warn!("Rate limiting: DISABLED");
-        router.layer(TraceLayer::new_for_http())
+        router.layer(trace_layer)
     }
 }

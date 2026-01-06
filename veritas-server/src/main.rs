@@ -68,7 +68,7 @@ async fn main() {
     let app = create_router_with_config(&config);
 
     tracing::info!("Listening on http://{}", addr);
-    tracing::info!("Endpoints: POST /seal, POST /verify, GET /health");
+    tracing::info!("Endpoints: POST /seal, POST /verify, GET /health, GET /ready");
     tracing::info!(
         "Timeout: {}s | Body limit: {}MB",
         config.timeout_secs,
@@ -79,7 +79,8 @@ async fn main() {
     println!("\nEndpoints:");
     println!("  POST /seal   - Create seal (multipart: file, media_type?, mock?)");
     println!("  POST /verify - Verify seal (multipart: file, seal_data)");
-    println!("  GET  /health - Health check");
+    println!("  GET  /health - Health check (JSON: status, version, qrng_available)");
+    println!("  GET  /ready  - Kubernetes readiness probe");
     println!("\nConfiguration:");
     println!(
         "  Timeout: {}s | Body limit: {}MB",
@@ -195,7 +196,38 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
-        assert_eq!(&body[..], b"OK");
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Verify required fields are present
+        assert!(json.get("status").is_some());
+        assert!(json.get("version").is_some());
+        assert!(json.get("qrng_available").is_some());
+        assert!(json.get("service").is_some());
+        assert_eq!(json["service"], "veritas-server");
+    }
+
+    #[tokio::test]
+    async fn test_ready_endpoint() {
+        let app = create_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["ready"], true);
     }
 
     #[tokio::test]

@@ -2,7 +2,7 @@
 //!
 //! Handles POST /seal requests to create quantum-authenticated seals for media content.
 
-use axum::{extract::Multipart, http::StatusCode, Json};
+use axum::{extract::Multipart, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
 use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder};
@@ -29,10 +29,11 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
     let mut use_mock = false;
 
     // Parse multipart form
-    while let Some(field) = multipart.next_field().await.map_err(|e| ApiError {
-        status: StatusCode::BAD_REQUEST,
-        message: format!("Failed to parse multipart: {}", e),
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::bad_request(format!("Failed to parse multipart: {}", e)))?
+    {
         let name = field.name().unwrap_or("").to_string();
 
         match name.as_str() {
@@ -41,10 +42,7 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
                     field
                         .bytes()
                         .await
-                        .map_err(|e| ApiError {
-                            status: StatusCode::BAD_REQUEST,
-                            message: format!("Failed to read file: {}", e),
-                        })?
+                        .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?
                         .to_vec(),
                 );
             }
@@ -64,9 +62,8 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
         }
     }
 
-    let content = file_data.ok_or_else(|| ApiError {
-        status: StatusCode::BAD_REQUEST,
-        message: "No file provided. Use 'file' field in multipart form.".into(),
+    let content = file_data.ok_or_else(|| {
+        ApiError::bad_request("No file provided. Use 'file' field in multipart form.")
     })?;
 
     // Generate keypair for this seal (in production, use persistent keys from TEE)
