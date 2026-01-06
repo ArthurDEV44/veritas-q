@@ -6168,6 +6168,8 @@ dependencies = [
  "solana-sdk",
  "spl-memo",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "veritas-core",
 ]
 

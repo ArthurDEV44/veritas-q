@@ -17,6 +17,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_memo::build_memo;
+use tracing::{debug, info, warn};
 use veritas_core::VeritasSeal;
 
 /// Solana Devnet RPC endpoint.
@@ -29,12 +30,9 @@ const AIRDROP_SOL: u64 = 1;
 const AIRDROP_RETRIES: u32 = 3;
 
 /// Execute the anchor command.
-pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
+pub async fn execute(seal_path: PathBuf, update_seal: bool, quiet: bool) -> Result<()> {
     // Load and parse the seal
-    println!(
-        "{}",
-        format!("🔏 Loading seal from {}", seal_path.display()).dimmed()
-    );
+    info!(path = %seal_path.display(), "Loading seal");
 
     let seal_bytes = std::fs::read(&seal_path)
         .with_context(|| format!("Failed to read seal file: {}", seal_path.display()))?;
@@ -46,17 +44,25 @@ pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
         })
         .context("Failed to parse seal (tried CBOR and JSON)")?;
 
+    debug!(
+        format = if VeritasSeal::from_cbor(&seal_bytes).is_ok() {
+            "cbor"
+        } else {
+            "json"
+        },
+        "Parsed seal"
+    );
+
     // Compute the seal hash (hash of the content hash + signature prefix)
     let seal_hash = compute_seal_hash(&seal);
-    println!("{}", format!("📝 Seal hash: {}", &seal_hash[..16]).dimmed());
+    info!(hash = %&seal_hash[..16], "Computed seal hash");
 
     // Generate a burner keypair
-    println!("{}", "🔑 Generating burner keypair...".dimmed());
     let payer = Keypair::new();
-    println!("{}", format!("   Pubkey: {}", payer.pubkey()).dimmed());
+    debug!(pubkey = %payer.pubkey(), "Generated burner keypair");
 
     // Connect to Devnet
-    println!("{}", "🌐 Connecting to Solana Devnet...".dimmed());
+    info!(url = DEVNET_RPC_URL, "Connecting to Solana Devnet");
     let client = RpcClient::new_with_timeout_and_commitment(
         DEVNET_RPC_URL.to_string(),
         Duration::from_secs(30),
@@ -64,15 +70,12 @@ pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
     );
 
     // Request airdrop
-    println!(
-        "{}",
-        format!("💰 Requesting {} SOL airdrop...", AIRDROP_SOL).dimmed()
-    );
-    request_airdrop_with_retry(&client, &payer.pubkey(), AIRDROP_SOL)?;
+    info!(amount = AIRDROP_SOL, "Requesting SOL airdrop");
+    request_airdrop_with_retry(&client, &payer.pubkey(), AIRDROP_SOL).await?;
 
     // Wait for airdrop to confirm
-    println!("{}", "⏳ Waiting for airdrop confirmation...".dimmed());
-    wait_for_balance(&client, &payer.pubkey(), AIRDROP_SOL * LAMPORTS_PER_SOL)?;
+    debug!("Waiting for airdrop confirmation");
+    wait_for_balance(&client, &payer.pubkey(), AIRDROP_SOL * LAMPORTS_PER_SOL).await?;
 
     // Build the memo instruction
     let memo_text = format!("VERITAS-Q:{}", seal_hash);
@@ -82,7 +85,7 @@ pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
     let transfer_ix = system_instruction::transfer(&payer.pubkey(), &payer.pubkey(), 0);
 
     // Build and send the transaction
-    println!("{}", "📤 Sending transaction...".dimmed());
+    info!("Sending transaction");
     let recent_blockhash = client
         .get_latest_blockhash()
         .context("Failed to get recent blockhash")?;
@@ -97,19 +100,26 @@ pub async fn execute(seal_path: PathBuf, update_seal: bool) -> Result<()> {
     let tx_id = signature.to_string();
     let explorer_url = format!("https://explorer.solana.com/tx/{}?cluster=devnet", tx_id);
 
-    // Success!
-    println!();
-    println!("{}", "⚓ Anchored to Solana Devnet!".green().bold());
-    println!();
-    println!("   {} {}", "Transaction:".dimmed(), tx_id);
-    println!("   {} {}", "Explorer:".dimmed(), explorer_url.cyan());
-    println!("   {} {}", "Memo:".dimmed(), memo_text);
+    info!(tx_id = %tx_id, "Transaction confirmed");
+
+    // Success output
+    if !quiet {
+        println!();
+        println!("{}", "Anchored to Solana Devnet!".green().bold());
+        println!();
+        println!("   {} {}", "Transaction:".dimmed(), tx_id);
+        println!("   {} {}", "Explorer:".dimmed(), explorer_url.cyan());
+        println!("   {} {}", "Memo:".dimmed(), memo_text);
+    }
 
     // Optionally update the seal file
     if update_seal {
         update_seal_with_anchor(&seal_path, &seal, &tx_id)?;
-        println!();
-        println!("{}", "📝 Updated seal file with blockchain anchor".green());
+        info!(path = %seal_path.display(), "Updated seal with blockchain anchor");
+        if !quiet {
+            println!();
+            println!("{}", "Updated seal file with blockchain anchor".green());
+        }
     }
 
     Ok(())
@@ -128,27 +138,25 @@ fn compute_seal_hash(seal: &VeritasSeal) -> String {
 }
 
 /// Request airdrop with retries.
-fn request_airdrop_with_retry(client: &RpcClient, pubkey: &Pubkey, sol_amount: u64) -> Result<()> {
+async fn request_airdrop_with_retry(
+    client: &RpcClient,
+    pubkey: &Pubkey,
+    sol_amount: u64,
+) -> Result<()> {
     let lamports = sol_amount * LAMPORTS_PER_SOL;
 
     for attempt in 1..=AIRDROP_RETRIES {
         match client.request_airdrop(pubkey, lamports) {
             Ok(sig) => {
-                println!(
-                    "{}",
-                    format!("   Airdrop requested (attempt {}): {}", attempt, sig).dimmed()
-                );
+                debug!(attempt, signature = %sig, "Airdrop requested");
                 return Ok(());
             }
             Err(e) => {
                 if attempt == AIRDROP_RETRIES {
                     bail!("Airdrop failed after {} attempts: {}", AIRDROP_RETRIES, e);
                 }
-                println!(
-                    "{}",
-                    format!("   Airdrop attempt {} failed, retrying...", attempt).yellow()
-                );
-                std::thread::sleep(Duration::from_secs(2));
+                warn!(attempt, error = %e, "Airdrop attempt failed, retrying");
+                tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }
     }
@@ -157,22 +165,18 @@ fn request_airdrop_with_retry(client: &RpcClient, pubkey: &Pubkey, sol_amount: u
 }
 
 /// Wait for the account to have at least the specified balance.
-fn wait_for_balance(client: &RpcClient, pubkey: &Pubkey, min_lamports: u64) -> Result<()> {
+async fn wait_for_balance(client: &RpcClient, pubkey: &Pubkey, min_lamports: u64) -> Result<()> {
     for _ in 0..30 {
         match client.get_balance(pubkey) {
             Ok(balance) if balance >= min_lamports => {
-                println!(
-                    "{}",
-                    format!(
-                        "   Balance: {} SOL",
-                        balance as f64 / LAMPORTS_PER_SOL as f64
-                    )
-                    .dimmed()
+                debug!(
+                    balance_sol = balance as f64 / LAMPORTS_PER_SOL as f64,
+                    "Balance confirmed"
                 );
                 return Ok(());
             }
             _ => {
-                std::thread::sleep(Duration::from_millis(500));
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
         }
     }
@@ -198,10 +202,12 @@ fn update_seal_with_anchor(seal_path: &PathBuf, seal: &VeritasSeal, tx_id: &str)
         // CBOR format
         let cbor = updated_seal.to_cbor()?;
         std::fs::write(seal_path, cbor)?;
+        debug!(format = "cbor", "Saved updated seal");
     } else {
         // JSON format
         let json = serde_json::to_string_pretty(&updated_seal)?;
         std::fs::write(seal_path, json)?;
+        debug!(format = "json", "Saved updated seal");
     }
 
     Ok(())

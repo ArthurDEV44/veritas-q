@@ -1,117 +1,138 @@
 //! Verify command implementation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
+use tracing::{debug, error, info};
 use veritas_core::{ContentVerificationResult, VeritasSeal};
 
+/// Build the seal path from the original file path.
+fn build_seal_path(file: &Path) -> PathBuf {
+    file.with_extension(format!(
+        "{}.veritas",
+        file.extension().and_then(|e| e.to_str()).unwrap_or("bin")
+    ))
+}
+
 /// Execute the verify command.
-pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>) -> Result<()> {
+pub async fn execute(file: PathBuf, seal_path: Option<PathBuf>, quiet: bool) -> Result<()> {
     // Determine seal path
-    let seal_path = seal_path.unwrap_or_else(|| {
-        file.with_extension(format!(
-            "{}.veritas",
-            file.extension().and_then(|e| e.to_str()).unwrap_or("bin")
-        ))
-    });
+    let seal_path = seal_path.unwrap_or_else(|| build_seal_path(&file));
 
     // Read the original file
     let content =
         std::fs::read(&file).with_context(|| format!("Failed to read file: {}", file.display()))?;
 
-    println!(
-        "{}",
-        format!("📄 Read {} bytes from {}", content.len(), file.display()).dimmed()
-    );
+    info!(path = %file.display(), bytes = content.len(), "Read file");
 
     // Read and parse the seal
     let seal_bytes = std::fs::read(&seal_path)
         .with_context(|| format!("Failed to read seal file: {}", seal_path.display()))?;
 
-    println!(
-        "{}",
-        format!("🔏 Read seal from {}", seal_path.display()).dimmed()
-    );
+    info!(path = %seal_path.display(), bytes = seal_bytes.len(), "Read seal");
 
     // Try CBOR first, then JSON
     let seal: VeritasSeal = if let Ok(seal) = VeritasSeal::from_cbor(&seal_bytes) {
+        debug!(format = "cbor", "Parsed seal");
         seal
     } else if let Ok(seal) = serde_json::from_slice(&seal_bytes) {
+        debug!(format = "json", "Parsed seal");
         seal
     } else {
         bail!("Failed to parse seal file (tried CBOR and JSON)");
     };
 
     // Verify signature and content in one call
-    println!("{}", "🔐 Verifying ML-DSA signature...".dimmed());
+    debug!("Verifying ML-DSA signature");
     let result = seal
         .verify_content(&content)
         .context("Verification failed")?;
 
-    println!();
-
     match result {
         ContentVerificationResult::Authentic => {
-            println!("{}", "╔════════════════════════════════════════╗".green());
-            println!(
-                "{}",
-                "║         ✅ AUTHENTIC                   ║".green().bold()
+            info!(
+                qrng_source = ?seal.qrng_source,
+                timestamp = seal.capture_timestamp_utc,
+                "Verification successful"
             );
-            println!("{}", "╚════════════════════════════════════════╝".green());
-            println!();
-            println!(
-                "   {} {}",
-                "Signature:".dimmed(),
-                "Valid (ML-DSA-65)".green()
-            );
-            println!("   {} {}", "Content:".dimmed(), "Matches original".green());
-            println!("   {} {:?}", "QRNG source:".dimmed(), seal.qrng_source);
-            println!(
-                "   {} {}",
-                "Sealed at:".dimmed(),
-                format_timestamp(seal.capture_timestamp_utc)
-            );
+
+            if !quiet {
+                println!();
+                println!("{}", "╔════════════════════════════════════════╗".green());
+                println!(
+                    "{}",
+                    "║              AUTHENTIC                 ║".green().bold()
+                );
+                println!("{}", "╚════════════════════════════════════════╝".green());
+                println!();
+                println!(
+                    "   {} {}",
+                    "Signature:".dimmed(),
+                    "Valid (ML-DSA-65)".green()
+                );
+                println!("   {} {}", "Content:".dimmed(), "Matches original".green());
+                println!("   {} {:?}", "QRNG source:".dimmed(), seal.qrng_source);
+                println!(
+                    "   {} {}",
+                    "Sealed at:".dimmed(),
+                    format_timestamp(seal.capture_timestamp_utc)
+                );
+            }
             Ok(())
         }
         ContentVerificationResult::ContentModified {
             expected_hash,
             actual_hash,
         } => {
-            println!("{}", "╔════════════════════════════════════════╗".red());
-            println!(
-                "{}",
-                "║         ❌ TAMPERED                    ║".red().bold()
+            error!(
+                expected = hex::encode(&expected_hash[..8]),
+                actual = hex::encode(&actual_hash[..8]),
+                "Content has been modified"
             );
-            println!("{}", "╚════════════════════════════════════════╝".red());
-            println!();
-            println!("   {} {}", "Signature:".dimmed(), "Valid".green());
-            println!(
-                "   {} {}",
-                "Content:".dimmed(),
-                "MODIFIED since sealing".red()
-            );
-            println!(
-                "   {} {}",
-                "Expected:".dimmed(),
-                hex::encode(&expected_hash[..8])
-            );
-            println!("   {} {}", "Got:".dimmed(), hex::encode(&actual_hash[..8]));
+
+            if !quiet {
+                println!();
+                println!("{}", "╔════════════════════════════════════════╗".red());
+                println!(
+                    "{}",
+                    "║              TAMPERED                  ║".red().bold()
+                );
+                println!("{}", "╚════════════════════════════════════════╝".red());
+                println!();
+                println!("   {} {}", "Signature:".dimmed(), "Valid".green());
+                println!(
+                    "   {} {}",
+                    "Content:".dimmed(),
+                    "MODIFIED since sealing".red()
+                );
+                println!(
+                    "   {} {}",
+                    "Expected:".dimmed(),
+                    hex::encode(&expected_hash[..8])
+                );
+                println!("   {} {}", "Got:".dimmed(), hex::encode(&actual_hash[..8]));
+            }
             bail!("Verification failed: content has been modified")
         }
         ContentVerificationResult::SignatureFailed(sig_result) => {
-            println!("{}", "╔════════════════════════════════════════╗".red());
-            println!(
-                "{}",
-                "║         ❌ TAMPERED                    ║".red().bold()
-            );
-            println!("{}", "╚════════════════════════════════════════╝".red());
-            println!();
-            println!(
-                "   {} {}",
-                "Signature:".dimmed(),
-                sig_result.description().red()
-            );
+            error!(reason = %sig_result.description(), "Signature verification failed");
+
+            if !quiet {
+                println!();
+                println!("{}", "╔════════════════════════════════════════╗".red());
+                println!(
+                    "{}",
+                    "║              TAMPERED                  ║".red().bold()
+                );
+                println!("{}", "╚════════════════════════════════════════╝".red());
+                println!();
+                println!(
+                    "   {} {}",
+                    "Signature:".dimmed(),
+                    sig_result.description().red()
+                );
+            }
             bail!("Verification failed: {}", sig_result.description())
         }
     }
