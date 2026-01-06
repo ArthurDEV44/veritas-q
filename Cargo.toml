@@ -71,6 +71,12 @@ uuid = { version = "1", features = ["v4"] }
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
+# WebAuthn/FIDO2
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+webauthn-rs-proto = "0.5"
+url = "2"
+dashmap = "6"
+
 # C2PA (Content Authenticity Initiative)
 c2pa = { version = "0.36", default-features = false, features = ["openssl", "v1_api", "unstable_api"] }
 openssl = { version = "0.10", features = ["vendored"] }

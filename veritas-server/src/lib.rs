@@ -9,8 +9,10 @@ pub mod handlers;
 pub mod openapi;
 pub mod routes;
 pub mod validation;
+pub mod webauthn;
 
 pub use config::Config;
 pub use error::ApiError;
 pub use openapi::ApiDoc;
 pub use routes::{create_router, create_router_with_config};
+pub use webauthn::{DeviceAttestation, WebAuthnConfig, WebAuthnStorage};

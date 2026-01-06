@@ -25,6 +25,10 @@ use crate::config::Config;
 use crate::handlers::{c2pa_embed_handler, c2pa_verify_handler};
 use crate::handlers::{health, ready, seal_handler, verify_handler};
 use crate::openapi::ApiDoc;
+use crate::webauthn::{
+    finish_authentication, finish_registration, start_authentication, start_registration,
+    WebAuthnState, WebAuthnStorage,
+};
 
 /// Create the application router with default config (for testing)
 pub fn create_router() -> Router {
@@ -69,12 +73,31 @@ pub fn create_router_with_config(config: &Config) -> Router {
         .make_span_with(DefaultMakeSpan::new().include_headers(true))
         .on_response(DefaultOnResponse::new().include_headers(true));
 
+    // Initialize WebAuthn state
+    let webauthn_state = Arc::new(WebAuthnState::from_env().unwrap_or_else(|e| {
+        tracing::warn!("Failed to initialize WebAuthn: {}, using defaults", e);
+        WebAuthnState {
+            config: crate::webauthn::WebAuthnConfig::from_env()
+                .expect("WebAuthn config must be valid"),
+            storage: WebAuthnStorage::new(),
+        }
+    }));
+
+    // WebAuthn routes (require state)
+    let webauthn_router = Router::new()
+        .route("/register/start", post(start_registration))
+        .route("/register/finish", post(finish_registration))
+        .route("/authenticate/start", post(start_authentication))
+        .route("/authenticate/finish", post(finish_authentication))
+        .with_state(webauthn_state);
+
     // Base router with common layers
     let mut router = Router::new()
         .route("/seal", post(seal_handler))
         .route("/verify", post(verify_handler))
         .route("/health", get(health))
-        .route("/ready", get(ready));
+        .route("/ready", get(ready))
+        .nest("/webauthn", webauthn_router);
 
     // Add C2PA routes if feature enabled
     #[cfg(feature = "c2pa")]

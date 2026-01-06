@@ -10,8 +10,11 @@ import {
   RotateCcw,
   SwitchCamera,
   WifiOff,
+  ShieldCheck,
 } from "lucide-react";
 import { useServiceWorker } from "@/hooks/useServiceWorker";
+import { useDeviceAttestation } from "@/hooks/useDeviceAttestation";
+import DeviceAttestationBadge from "@/components/DeviceAttestationBadge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -28,6 +31,7 @@ interface SealResponse {
   seal_id: string;
   seal_data: string;
   timestamp: number;
+  has_device_attestation: boolean;
 }
 
 // Detect iOS for specific handling
@@ -80,6 +84,7 @@ export default function CameraCapture() {
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
 
   const { isOffline } = useServiceWorker();
+  const { getAttestationJson } = useDeviceAttestation();
 
   // Check for multiple cameras on mount
   useEffect(() => {
@@ -255,6 +260,12 @@ export default function CameraCapture() {
       formData.append("file", blob, `capture_${Date.now()}.jpg`);
       formData.append("media_type", "image");
 
+      // Include device attestation if available and fresh
+      const attestationJson = getAttestationJson();
+      if (attestationJson) {
+        formData.append("device_attestation", attestationJson);
+      }
+
       // Send to API with timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -284,7 +295,7 @@ export default function CameraCapture() {
       }
       setState("error");
     }
-  }, [isOffline, stopCamera]);
+  }, [isOffline, stopCamera, getAttestationJson]);
 
   const reset = useCallback(() => {
     stopCamera();
@@ -302,6 +313,11 @@ export default function CameraCapture() {
 
   return (
     <div className="flex flex-col items-center gap-6 w-full">
+      {/* Device attestation badge */}
+      <div className="w-full max-w-sm">
+        <DeviceAttestationBadge compact={state !== "idle"} />
+      </div>
+
       {/* Camera viewport */}
       <div className="relative w-full aspect-[4/3] sm:aspect-video bg-surface rounded-2xl overflow-hidden border border-border">
         <AnimatePresence mode="wait">
@@ -443,6 +459,20 @@ export default function CameraCapture() {
                     <p className="font-mono text-sm text-foreground/80">
                       {new Date(sealData.timestamp).toLocaleString("fr-FR")}
                     </p>
+                  </div>
+                  <div className={`rounded-lg p-3 flex items-center gap-2 ${
+                    sealData.has_device_attestation
+                      ? "bg-green-500/10 border border-green-500/30"
+                      : "bg-surface-elevated"
+                  }`}>
+                    {sealData.has_device_attestation ? (
+                      <>
+                        <ShieldCheck className="w-4 h-4 text-green-500" />
+                        <span className="text-sm text-green-500">Appareil attesté</span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-foreground/40">Sans attestation d&apos;appareil</span>
+                    )}
                   </div>
                 </div>
               )}

@@ -35,6 +35,10 @@ tracing-subscriber.workspace = true
 tower_governor.workspace = true
 utoipa.workspace = true
 utoipa-swagger-ui.workspace = true
+webauthn-rs.workspace = true
+webauthn-rs-proto.workspace = true
+url.workspace = true
+dashmap.workspace = true
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
