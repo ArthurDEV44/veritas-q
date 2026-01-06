@@ -76,15 +76,39 @@ cargo run -p veritas-server --release
 # Le serveur tourne sur http://127.0.0.1:3000
 ```
 
+### Fonctionnalités Production-Ready
+
+- **Observabilité** - Logs structurés avec tracing, request ID unique par requête
+- **Rate Limiting** - Protection contre les abus (configurable par IP)
+- **Validation** - Content-Type et taille des fichiers validés
+- **Timeouts** - Protection contre les requêtes bloquantes
+- **CORS** - Configurable pour la sécurité cross-origin
+- **Graceful Shutdown** - Arrêt propre des connexions en cours
+
 ### Endpoints
 
 | Endpoint | Méthode | Description |
 |----------|---------|-------------|
 | `/seal` | POST | Créer un sceau quantique (multipart: file, media_type?, mock?) |
 | `/verify` | POST | Vérifier un sceau (multipart: file, seal_data) |
-| `/health` | GET | Vérification de santé |
+| `/health` | GET | Santé du service (JSON: status, version, qrng_available) |
+| `/ready` | GET | Probe de readiness Kubernetes |
 
-### Exemple
+### Configuration du Serveur
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `PORT` | 3000 | Port d'écoute |
+| `HOST` | 127.0.0.1 | Adresse d'écoute (0.0.0.0 pour Docker) |
+| `ALLOWED_ORIGINS` | * | Origines CORS autorisées (séparées par virgules) |
+| `BODY_LIMIT_MB` | 50 | Limite de taille du body HTTP |
+| `MAX_FILE_SIZE_MB` | 25 | Limite de taille par fichier uploadé |
+| `REQUEST_TIMEOUT_SECS` | 30 | Timeout des requêtes |
+| `RATE_LIMIT_ENABLED` | true | Activer le rate limiting |
+| `RATE_LIMIT_PER_SEC` | 10 | Requêtes par seconde |
+| `RATE_LIMIT_BURST` | 20 | Taille du burst |
+
+### Exemples
 
 ```bash
 # Créer un sceau
@@ -109,7 +133,26 @@ curl -X POST http://127.0.0.1:3000/verify \
   "authentic": true,
   "details": "Seal valid. Media type: Image, QRNG source: AnuCloud, Captured: 2026-01-05T21:12:05+00:00"
 }
+
+# Health check (JSON enrichi)
+curl http://127.0.0.1:3000/health
+
+# Réponse
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "qrng_available": true,
+  "service": "veritas-server"
+}
 ```
+
+### Types de Fichiers Acceptés
+
+Le serveur valide le Content-Type des uploads :
+- `image/*` (jpeg, png, webp, etc.)
+- `video/*` (mp4, webm, etc.)
+- `audio/*` (mpeg, wav, etc.)
+- `application/octet-stream`
 
 ## Portail Web de Vérification
 
