@@ -1,5 +1,11 @@
 use thiserror::Error;
 
+/// Current seal format version.
+pub const CURRENT_SEAL_VERSION: u8 = 1;
+
+/// Maximum allowed seal size in bytes (16KB).
+pub const MAX_SEAL_SIZE: usize = 16_384;
+
 #[derive(Error, Debug)]
 pub enum VeritasError {
     #[error("QRNG error: {0}")]
@@ -17,9 +23,23 @@ pub enum VeritasError {
     #[error("Invalid seal: {0}")]
     InvalidSeal(String),
 
-    #[error("Entropy timestamp mismatch: entropy={entropy_ts}, capture={capture_ts}")]
-    EntropyTimestampMismatch { entropy_ts: u64, capture_ts: u64 },
+    #[error("Entropy timestamp mismatch: entropy={entropy_ts}ms, capture={capture_ts}ms, drift={drift_ms}ms")]
+    EntropyTimestampMismatch {
+        entropy_ts: u64,
+        capture_ts: u64,
+        drift_ms: u64,
+    },
 
+    #[error("Seal too large: {size} bytes exceeds maximum of {max} bytes")]
+    SealTooLarge { size: usize, max: usize },
+
+    #[error("Unsupported seal version: {0} (current: {1})")]
+    UnsupportedSealVersion(u8, u8),
+
+    #[error("Invalid timestamp: {reason}")]
+    InvalidTimestamp { reason: String },
+
+    #[cfg(feature = "network")]
     #[error("HTTP request error: {0}")]
     HttpError(#[from] reqwest::Error),
 }

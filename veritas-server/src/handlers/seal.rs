@@ -76,20 +76,21 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
     })?;
 
     // Generate keypair for this seal (in production, use persistent keys from TEE)
+    // Uses ZeroizingSecretKey for secure memory handling
     let (public_key, secret_key) = generate_keypair();
 
-    // Create seal with appropriate QRNG source
+    // Create seal with appropriate QRNG source (using secure builder)
     let seal = if use_mock {
         let qrng = MockQrng::default();
         SealBuilder::new(content, media_type)
-            .build(&qrng, &secret_key, &public_key)
+            .build_secure(&qrng, &secret_key, &public_key)
             .await?
     } else {
         // Try ANU QRNG first, fall back to mock if unavailable
         match AnuQrng::new() {
             Ok(qrng) => {
                 match SealBuilder::new(content.clone(), media_type)
-                    .build(&qrng, &secret_key, &public_key)
+                    .build_secure(&qrng, &secret_key, &public_key)
                     .await
                 {
                     Ok(seal) => seal,
@@ -97,7 +98,7 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
                         tracing::warn!("ANU QRNG failed: {}, falling back to mock entropy", e);
                         let mock_qrng = MockQrng::default();
                         SealBuilder::new(content, media_type)
-                            .build(&mock_qrng, &secret_key, &public_key)
+                            .build_secure(&mock_qrng, &secret_key, &public_key)
                             .await?
                     }
                 }
@@ -106,7 +107,7 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
                 tracing::warn!("ANU QRNG client creation failed: {}, using mock entropy", e);
                 let mock_qrng = MockQrng::default();
                 SealBuilder::new(content, media_type)
-                    .build(&mock_qrng, &secret_key, &public_key)
+                    .build_secure(&mock_qrng, &secret_key, &public_key)
                     .await?
             }
         }

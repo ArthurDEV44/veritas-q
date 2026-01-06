@@ -32,6 +32,7 @@ sha3 = "0.10"
 
 # Utilities
 thiserror = "2"
+zeroize = { version = "1.8", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 geohash = "0.13"
 hex = "0.4"

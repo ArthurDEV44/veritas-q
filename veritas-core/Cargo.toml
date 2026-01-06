@@ -20,6 +20,7 @@ thiserror.workspace = true
 chrono.workspace = true
 geohash.workspace = true
 hex.workspace = true
+zeroize.workspace = true
 
 # Optional network dependencies (not needed for verification-only Wasm)
 tokio = { workspace = true, optional = true }

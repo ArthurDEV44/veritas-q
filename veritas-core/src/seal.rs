@@ -1,10 +1,11 @@
 use chrono::Utc;
 use pqcrypto_mldsa::mldsa65;
-use pqcrypto_traits::sign::{PublicKey, SignedMessage};
+use pqcrypto_traits::sign::{PublicKey, SecretKey as SecretKeyTrait, SignedMessage};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
+use zeroize::Zeroize;
 
-use crate::error::{Result, VeritasError};
+use crate::error::{Result, VeritasError, CURRENT_SEAL_VERSION, MAX_SEAL_SIZE};
 use crate::qrng::QrngSource;
 #[cfg(feature = "network")]
 use crate::qrng::QuantumEntropySource;
@@ -12,6 +13,51 @@ use crate::qrng::QuantumEntropySource;
 /// Maximum allowed difference between entropy and capture timestamps (in seconds).
 #[cfg(feature = "network")]
 const MAX_ENTROPY_TIMESTAMP_DRIFT_SECS: u64 = 5;
+
+/// Wrapper for ML-DSA-65 secret key that zeroizes memory on drop.
+///
+/// This ensures secret key material is securely erased from memory
+/// when it goes out of scope, preventing potential leakage.
+///
+/// # Security
+///
+/// The secret key bytes are stored in a separate Vec that is explicitly
+/// zeroized when the wrapper is dropped. This provides defense-in-depth
+/// even though the original key struct may still contain the key data.
+pub struct ZeroizingSecretKey {
+    /// Copy of secret key bytes that will be zeroized on drop
+    bytes: Vec<u8>,
+    /// The actual key used for signing operations
+    key: mldsa65::SecretKey,
+}
+
+impl ZeroizingSecretKey {
+    /// Create a new zeroizing wrapper from an ML-DSA-65 secret key.
+    pub fn new(key: mldsa65::SecretKey) -> Self {
+        let bytes = key.as_bytes().to_vec();
+        Self { bytes, key }
+    }
+
+    /// Get a reference to the underlying secret key for signing.
+    pub fn as_inner(&self) -> &mldsa65::SecretKey {
+        &self.key
+    }
+}
+
+impl Drop for ZeroizingSecretKey {
+    fn drop(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
+// Prevent Debug from leaking key material
+impl std::fmt::Debug for ZeroizingSecretKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ZeroizingSecretKey")
+            .field("bytes", &"[REDACTED]")
+            .finish()
+    }
+}
 
 /// Device attestation information from TEE.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +121,11 @@ pub struct BlockchainAnchor {
 /// captured at a specific moment with quantum-grade cryptographic assurance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VeritasSeal {
+    // === Format Version ===
+    /// Seal format version for forward compatibility
+    #[serde(default = "default_version")]
+    pub version: u8,
+
     // === Capture Context ===
     /// NTP-synced Unix timestamp (milliseconds)
     pub capture_timestamp_utc: u64,
@@ -106,6 +157,11 @@ pub struct VeritasSeal {
     // === Anchoring ===
     /// Optional blockchain anchor for public verification
     pub blockchain_anchor: Option<BlockchainAnchor>,
+}
+
+/// Default version for deserializing legacy seals without version field.
+fn default_version() -> u8 {
+    1
 }
 
 /// Builder for creating VeritasSeal instances.
@@ -143,6 +199,8 @@ impl SealBuilder {
     }
 
     /// Build and sign the seal using the provided QRNG source and signing key.
+    ///
+    /// Accepts either a raw `mldsa65::SecretKey` or a `ZeroizingSecretKey` wrapper.
     pub async fn build<Q: QuantumEntropySource>(
         self,
         qrng: &Q,
@@ -150,18 +208,26 @@ impl SealBuilder {
         public_key: &mldsa65::PublicKey,
     ) -> Result<VeritasSeal> {
         let now = Utc::now();
-        let capture_timestamp_utc = now.timestamp_millis() as u64;
+        let capture_timestamp_utc =
+            u64::try_from(now.timestamp_millis()).map_err(|_| VeritasError::InvalidTimestamp {
+                reason: "timestamp before Unix epoch".into(),
+            })?;
 
         // Fetch quantum entropy
         let qrng_entropy = qrng.get_entropy().await?;
-        let entropy_timestamp = Utc::now().timestamp_millis() as u64;
+        let entropy_timestamp = u64::try_from(Utc::now().timestamp_millis()).map_err(|_| {
+            VeritasError::InvalidTimestamp {
+                reason: "entropy timestamp before Unix epoch".into(),
+            }
+        })?;
 
-        // Validate entropy timestamp is within acceptable drift
-        let drift = entropy_timestamp.saturating_sub(capture_timestamp_utc);
-        if drift > MAX_ENTROPY_TIMESTAMP_DRIFT_SECS * 1000 {
+        // Validate entropy timestamp is within acceptable drift (bidirectional)
+        let drift_ms = entropy_timestamp.abs_diff(capture_timestamp_utc);
+        if drift_ms > MAX_ENTROPY_TIMESTAMP_DRIFT_SECS * 1000 {
             return Err(VeritasError::EntropyTimestampMismatch {
                 entropy_ts: entropy_timestamp,
                 capture_ts: capture_timestamp_utc,
+                drift_ms,
             });
         }
 
@@ -180,8 +246,8 @@ impl SealBuilder {
             media_type: self.media_type,
         };
 
-        // Serialize signable payload to CBOR for signing
-        let mut signable_bytes = Vec::new();
+        // Serialize signable payload to CBOR for signing (pre-allocate buffer)
+        let mut signable_bytes = Vec::with_capacity(512);
         ciborium::into_writer(&signable, &mut signable_bytes)
             .map_err(|e| VeritasError::SerializationError(e.to_string()))?;
 
@@ -190,6 +256,7 @@ impl SealBuilder {
         let signature = signed_message.as_bytes().to_vec();
 
         Ok(VeritasSeal {
+            version: CURRENT_SEAL_VERSION,
             capture_timestamp_utc,
             capture_location: self.capture_location,
             device_attestation: self.device_attestation,
@@ -202,6 +269,19 @@ impl SealBuilder {
             public_key: public_key.as_bytes().to_vec(),
             blockchain_anchor: None,
         })
+    }
+
+    /// Build and sign the seal using a zeroizing secret key wrapper.
+    ///
+    /// This is the recommended method as it ensures the secret key is
+    /// securely erased from memory when the wrapper is dropped.
+    pub async fn build_secure<Q: QuantumEntropySource>(
+        self,
+        qrng: &Q,
+        secret_key: &ZeroizingSecretKey,
+        public_key: &mldsa65::PublicKey,
+    ) -> Result<VeritasSeal> {
+        self.build(qrng, secret_key.as_inner(), public_key).await
     }
 }
 
@@ -261,20 +341,56 @@ impl VeritasSeal {
 
     /// Serialize the seal to CBOR bytes.
     pub fn to_cbor(&self) -> Result<Vec<u8>> {
-        let mut bytes = Vec::new();
+        let mut bytes = Vec::with_capacity(4096);
         ciborium::into_writer(self, &mut bytes)
             .map_err(|e| VeritasError::SerializationError(e.to_string()))?;
         Ok(bytes)
     }
 
     /// Deserialize a seal from CBOR bytes.
+    ///
+    /// # Security
+    ///
+    /// This method enforces a maximum size limit to prevent denial-of-service
+    /// attacks via maliciously crafted large inputs.
     pub fn from_cbor(bytes: &[u8]) -> Result<Self> {
-        ciborium::from_reader(bytes).map_err(|e| VeritasError::SerializationError(e.to_string()))
+        // Security: Prevent DoS via oversized input
+        if bytes.len() > MAX_SEAL_SIZE {
+            return Err(VeritasError::SealTooLarge {
+                size: bytes.len(),
+                max: MAX_SEAL_SIZE,
+            });
+        }
+
+        let seal: Self = ciborium::from_reader(bytes)
+            .map_err(|e| VeritasError::SerializationError(e.to_string()))?;
+
+        // Validate version compatibility
+        if seal.version > CURRENT_SEAL_VERSION {
+            return Err(VeritasError::UnsupportedSealVersion(
+                seal.version,
+                CURRENT_SEAL_VERSION,
+            ));
+        }
+
+        Ok(seal)
     }
 }
 
 /// Generate a new ML-DSA-65 keypair for seal signing.
-pub fn generate_keypair() -> (mldsa65::PublicKey, mldsa65::SecretKey) {
+///
+/// Returns the public key and a zeroizing wrapper for the secret key.
+/// The secret key will be securely erased from memory when dropped.
+pub fn generate_keypair() -> (mldsa65::PublicKey, ZeroizingSecretKey) {
+    let (pk, sk) = mldsa65::keypair();
+    (pk, ZeroizingSecretKey::new(sk))
+}
+
+/// Generate a new ML-DSA-65 keypair returning raw keys (for testing).
+///
+/// **Warning**: Prefer `generate_keypair()` for production use as it
+/// returns a `ZeroizingSecretKey` that securely erases memory on drop.
+pub fn generate_keypair_raw() -> (mldsa65::PublicKey, mldsa65::SecretKey) {
     mldsa65::keypair()
 }
 
@@ -290,7 +406,7 @@ mod tests {
 
         let content = b"Hello World".to_vec();
         let seal = SealBuilder::new(content, MediaType::Image)
-            .build(&qrng, &secret_key, &public_key)
+            .build_secure(&qrng, &secret_key, &public_key)
             .await
             .expect("Failed to create seal");
 
@@ -298,6 +414,7 @@ mod tests {
             seal.verify().expect("Verification failed"),
             "Seal should be valid"
         );
+        assert_eq!(seal.version, CURRENT_SEAL_VERSION);
         assert_eq!(seal.qrng_source, QrngSource::Mock);
         assert_eq!(seal.media_type, MediaType::Image);
     }
@@ -310,7 +427,7 @@ mod tests {
         let content = b"Test content".to_vec();
         let seal = SealBuilder::new(content, MediaType::Video)
             .with_location("u4pruydqqvj".to_string())
-            .build(&qrng, &secret_key, &public_key)
+            .build_secure(&qrng, &secret_key, &public_key)
             .await
             .expect("Failed to create seal");
 
@@ -321,6 +438,7 @@ mod tests {
             restored.verify().expect("Verification failed"),
             "Restored seal should be valid"
         );
+        assert_eq!(restored.version, CURRENT_SEAL_VERSION);
         assert_eq!(restored.capture_location, Some("u4pruydqqvj".to_string()));
     }
 
@@ -331,7 +449,7 @@ mod tests {
 
         let content = b"Original content".to_vec();
         let mut seal = SealBuilder::new(content, MediaType::Image)
-            .build(&qrng, &secret_key, &public_key)
+            .build_secure(&qrng, &secret_key, &public_key)
             .await
             .expect("Failed to create seal");
 
@@ -342,5 +460,42 @@ mod tests {
             !seal.verify().expect("Verification call failed"),
             "Tampered seal should fail verification"
         );
+    }
+
+    #[tokio::test]
+    async fn test_seal_too_large_rejected() {
+        // Create a byte array larger than MAX_SEAL_SIZE
+        let oversized = vec![0u8; MAX_SEAL_SIZE + 1];
+
+        let result = VeritasSeal::from_cbor(&oversized);
+        assert!(matches!(
+            result,
+            Err(VeritasError::SealTooLarge { size, max })
+            if size == MAX_SEAL_SIZE + 1 && max == MAX_SEAL_SIZE
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_unsupported_version_rejected() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test".to_vec();
+        let mut seal = SealBuilder::new(content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Bump version to unsupported
+        seal.version = CURRENT_SEAL_VERSION + 1;
+
+        let cbor = seal.to_cbor().expect("Failed to serialize");
+        let result = VeritasSeal::from_cbor(&cbor);
+
+        assert!(matches!(
+            result,
+            Err(VeritasError::UnsupportedSealVersion(v, current))
+            if v == CURRENT_SEAL_VERSION + 1 && current == CURRENT_SEAL_VERSION
+        ));
     }
 }

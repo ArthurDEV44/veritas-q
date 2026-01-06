@@ -113,11 +113,12 @@ async fn create_seal<Q: QuantumEntropySource>(
     qrng: &Q,
 ) -> Result<VeritasSeal> {
     // Generate keypair (in production, this would come from TEE)
+    // Uses ZeroizingSecretKey for secure memory handling
     let (public_key, secret_key) = generate_keypair();
 
-    // Create the seal
+    // Create the seal using secure builder
     let seal = SealBuilder::new(content, media_type)
-        .build(qrng, &secret_key, &public_key)
+        .build_secure(qrng, &secret_key, &public_key)
         .await
         .context("Failed to create seal")?;
 

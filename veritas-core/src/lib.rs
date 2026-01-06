@@ -9,6 +9,7 @@
 //! - QRNG entropy binding for capture-time authenticity
 //! - CBOR serialization for compact, efficient storage
 //! - C2PA-compatible metadata format
+//! - Secure key zeroization on drop
 //!
 //! # Example
 //!
@@ -17,15 +18,16 @@
 //!
 //! # async fn example() -> veritas_core::Result<()> {
 //! // Generate signing keypair (in production, use TEE-protected keys)
+//! // The secret key is wrapped in ZeroizingSecretKey for secure memory handling
 //! let (public_key, secret_key) = generate_keypair();
 //!
 //! // Use mock QRNG for testing (in production, use IdQuantiqueQrng)
 //! let qrng = MockQrng::default();
 //!
-//! // Create and sign a seal for some content
+//! // Create and sign a seal for some content using the secure builder
 //! let content = b"Hello World".to_vec();
 //! let seal = SealBuilder::new(content, MediaType::Image)
-//!     .build(&qrng, &secret_key, &public_key)
+//!     .build_secure(&qrng, &secret_key, &public_key)
 //!     .await?;
 //!
 //! // Verify the seal
@@ -39,10 +41,11 @@ pub mod qrng;
 pub mod seal;
 
 // Re-export main types for convenience
-pub use error::{Result, VeritasError};
+pub use error::{Result, VeritasError, CURRENT_SEAL_VERSION, MAX_SEAL_SIZE};
 pub use qrng::QrngSource;
 pub use seal::{
-    generate_keypair, BlockchainAnchor, ContentHash, DeviceAttestation, MediaType, VeritasSeal,
+    generate_keypair, generate_keypair_raw, BlockchainAnchor, ContentHash, DeviceAttestation,
+    MediaType, VeritasSeal, ZeroizingSecretKey,
 };
 
 #[cfg(feature = "network")]
@@ -69,7 +72,7 @@ mod tests {
         let content = b"Hello World".to_vec();
 
         let seal = SealBuilder::new(content, MediaType::Image)
-            .build(&qrng, &secret_key, &public_key)
+            .build_secure(&qrng, &secret_key, &public_key)
             .await
             .expect("Failed to create seal");
 
@@ -78,6 +81,7 @@ mod tests {
         assert!(is_valid, "Seal signature should be valid");
 
         // Additional assertions
+        assert_eq!(seal.version, CURRENT_SEAL_VERSION);
         assert_eq!(seal.qrng_source, QrngSource::Mock);
         assert_eq!(seal.media_type, MediaType::Image);
         assert!(!seal.signature.is_empty(), "Signature should not be empty");
@@ -94,12 +98,12 @@ mod tests {
         let (public_key, secret_key) = generate_keypair();
 
         let seal1 = SealBuilder::new(b"Content A".to_vec(), MediaType::Image)
-            .build(&qrng, &secret_key, &public_key)
+            .build_secure(&qrng, &secret_key, &public_key)
             .await
             .expect("Failed to create seal 1");
 
         let seal2 = SealBuilder::new(b"Content B".to_vec(), MediaType::Image)
-            .build(&qrng, &secret_key, &public_key)
+            .build_secure(&qrng, &secret_key, &public_key)
             .await
             .expect("Failed to create seal 2");
 
