@@ -60,7 +60,7 @@ color: clap::ColorChoice,
 
 ---
 
-## Phase 2: Robustesse (Priorité Moyenne)
+## Phase 2: Robustesse (Priorité Moyenne) ✅ DONE
 
 ### 2.1 Exit codes structurés
 

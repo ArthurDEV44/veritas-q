@@ -2,14 +2,20 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use colored::Colorize;
+use pqcrypto_mldsa::mldsa65;
+use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use tracing::{debug, info, warn};
 use veritas_core::{
     generate_keypair, AnuQrng, MediaType, MockQrng, QuantumEntropySource, SealBuilder, VeritasSeal,
+    ZeroizingSecretKey, MLDSA65_PUBLIC_KEY_BYTES, MLDSA65_SECRET_KEY_BYTES,
 };
 
 use crate::OutputFormat;
+
+/// Keypair file format: public key (1952 bytes) || secret key (4032 bytes)
+const KEYPAIR_FILE_SIZE: usize = MLDSA65_PUBLIC_KEY_BYTES + MLDSA65_SECRET_KEY_BYTES;
 
 /// Detect media type from file extension.
 fn detect_media_type(path: &Path) -> MediaType {
@@ -34,11 +40,59 @@ fn build_seal_path(file: &Path) -> PathBuf {
     ))
 }
 
+/// Load an ML-DSA-65 keypair from a file.
+fn load_keypair(path: &Path) -> Result<(mldsa65::PublicKey, ZeroizingSecretKey)> {
+    let data = std::fs::read(path)
+        .with_context(|| format!("Failed to read keypair file: {}", path.display()))?;
+
+    if data.len() != KEYPAIR_FILE_SIZE {
+        bail!(
+            "Invalid keypair file size: expected {} bytes, got {}",
+            KEYPAIR_FILE_SIZE,
+            data.len()
+        );
+    }
+
+    let public_key = mldsa65::PublicKey::from_bytes(&data[..MLDSA65_PUBLIC_KEY_BYTES])
+        .map_err(|_| anyhow::anyhow!("Invalid public key in keypair file"))?;
+
+    let secret_key = mldsa65::SecretKey::from_bytes(&data[MLDSA65_PUBLIC_KEY_BYTES..])
+        .map_err(|_| anyhow::anyhow!("Invalid secret key in keypair file"))?;
+
+    Ok((public_key, ZeroizingSecretKey::new(secret_key)))
+}
+
+/// Save an ML-DSA-65 keypair to a file.
+fn save_keypair(
+    path: &Path,
+    public_key: &mldsa65::PublicKey,
+    secret_key: &ZeroizingSecretKey,
+) -> Result<()> {
+    let mut data = Vec::with_capacity(KEYPAIR_FILE_SIZE);
+    data.extend_from_slice(public_key.as_bytes());
+    data.extend_from_slice(secret_key.as_inner().as_bytes());
+
+    std::fs::write(path, &data)
+        .with_context(|| format!("Failed to write keypair file: {}", path.display()))?;
+
+    // Set restrictive permissions on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(path, permissions)?;
+    }
+
+    Ok(())
+}
+
 /// Execute the seal command.
 pub async fn execute(
     file: PathBuf,
     format: OutputFormat,
     use_mock: bool,
+    keypair_path: Option<PathBuf>,
+    save_keypair_path: Option<PathBuf>,
     quiet: bool,
 ) -> Result<()> {
     // Read the file content
@@ -51,16 +105,39 @@ pub async fn execute(
     let media_type = detect_media_type(&file);
     debug!(media_type = ?media_type, "Detected media type");
 
-    // Get quantum entropy
+    // Load or generate keypair
+    let (public_key, secret_key) = if let Some(kp_path) = &keypair_path {
+        info!(path = %kp_path.display(), "Loading keypair from file");
+        load_keypair(kp_path)?
+    } else {
+        let (pk, sk) = generate_keypair();
+        debug!("Generated new ML-DSA-65 keypair");
+
+        // Save keypair if requested (only when generating new)
+        if let Some(save_path) = &save_keypair_path {
+            save_keypair(save_path, &pk, &sk)?;
+            info!(path = %save_path.display(), "Saved keypair to file");
+            if !quiet {
+                println!(
+                    "{}",
+                    format!("Keypair saved to: {}", save_path.display()).dimmed()
+                );
+            }
+        }
+
+        (pk, sk)
+    };
+
+    // Get quantum entropy and create seal
     let seal = if use_mock {
         warn!("Using MOCK entropy (not quantum-safe!)");
         if !quiet {
             eprintln!("{}", "Using MOCK entropy (not quantum-safe!)".yellow());
         }
         let qrng = MockQrng::default();
-        create_seal(content, media_type, &qrng).await?
+        create_seal(content, media_type, &qrng, &public_key, &secret_key).await?
     } else {
-        match create_seal_with_anu(content.clone(), media_type).await {
+        match create_seal_with_anu(content.clone(), media_type, &public_key, &secret_key).await {
             Ok(seal) => seal,
             Err(e) => {
                 warn!(error = %e, "ANU QRNG failed, falling back to mock entropy");
@@ -71,7 +148,7 @@ pub async fn execute(
                     );
                 }
                 let qrng = MockQrng::default();
-                create_seal(content, media_type, &qrng).await?
+                create_seal(content, media_type, &qrng, &public_key, &secret_key).await?
             }
         }
     };
@@ -112,30 +189,35 @@ pub async fn execute(
             "Signature size:".dimmed(),
             seal.signature.len()
         );
+        if keypair_path.is_some() {
+            println!("   {} {}", "Keypair:".dimmed(), "loaded from file".cyan());
+        }
     }
 
     Ok(())
 }
 
-async fn create_seal_with_anu(content: Vec<u8>, media_type: MediaType) -> Result<VeritasSeal> {
+async fn create_seal_with_anu(
+    content: Vec<u8>,
+    media_type: MediaType,
+    public_key: &mldsa65::PublicKey,
+    secret_key: &ZeroizingSecretKey,
+) -> Result<VeritasSeal> {
     info!("Fetching quantum entropy from ANU QRNG");
     let qrng = AnuQrng::new().context("Failed to create ANU QRNG client")?;
-    create_seal(content, media_type, &qrng).await
+    create_seal(content, media_type, &qrng, public_key, secret_key).await
 }
 
 async fn create_seal<Q: QuantumEntropySource>(
     content: Vec<u8>,
     media_type: MediaType,
     qrng: &Q,
+    public_key: &mldsa65::PublicKey,
+    secret_key: &ZeroizingSecretKey,
 ) -> Result<VeritasSeal> {
-    // Generate keypair (in production, this would come from TEE)
-    // Uses ZeroizingSecretKey for secure memory handling
-    let (public_key, secret_key) = generate_keypair();
-    debug!("Generated ML-DSA-65 keypair");
-
     // Create the seal using secure builder
     let seal = SealBuilder::new(content, media_type)
-        .build_secure(qrng, &secret_key, &public_key)
+        .build_secure(qrng, secret_key, public_key)
         .await
         .context("Failed to create seal")?;
 

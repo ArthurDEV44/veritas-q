@@ -1,13 +1,14 @@
 //! Veritas CLI - Quantum-authenticated media sealing tool.
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 
-use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 mod commands;
+mod exit_codes;
 
 /// Output format for seal files.
 #[derive(Clone, Copy, Default, ValueEnum)]
@@ -38,7 +39,16 @@ pub enum ColorMode {
   veritas seal image.jpg              Seal a file with quantum entropy
   veritas seal --mock image.jpg       Seal with mock entropy (testing)
   veritas verify image.jpg            Verify a sealed file
-  veritas anchor image.jpg.veritas    Anchor seal to Solana")]
+  veritas anchor image.jpg.veritas    Anchor seal to Solana
+
+Exit codes:
+  0   Success
+  1   General error
+  64  Usage error (invalid arguments)
+  65  Verification failed (tampered content)
+  66  Input error (file not found)
+  69  Network error (QRNG/blockchain unavailable)
+  74  I/O error (cannot write output)")]
 struct Cli {
     /// Increase verbosity (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
@@ -71,6 +81,14 @@ enum Commands {
         /// Use mock QRNG instead of real quantum entropy (for testing)
         #[arg(long)]
         r#mock: bool,
+
+        /// Path to existing ML-DSA-65 keypair file to use for signing
+        #[arg(long, value_name = "PATH")]
+        keypair: Option<PathBuf>,
+
+        /// Save the generated keypair to this path (ignored if --keypair is set)
+        #[arg(long, value_name = "PATH")]
+        save_keypair: Option<PathBuf>,
     },
 
     /// Verify a sealed file's authenticity
@@ -128,21 +146,34 @@ fn setup_color(mode: ColorMode) {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     setup_color(cli.color);
     setup_logging(cli.verbose, cli.quiet);
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Seal {
             file,
             format,
             r#mock,
-        } => commands::seal::execute(file, format, r#mock, cli.quiet).await,
+            keypair,
+            save_keypair,
+        } => commands::seal::execute(file, format, r#mock, keypair, save_keypair, cli.quiet).await,
         Commands::Verify { file, seal } => commands::verify::execute(file, seal, cli.quiet).await,
         Commands::Anchor { seal, update_seal } => {
             commands::anchor::execute(seal, update_seal, cli.quiet).await
+        }
+    };
+
+    match result {
+        Ok(()) => ExitCode::from(exit_codes::SUCCESS as u8),
+        Err(e) => {
+            let exit = exit_codes::ExitCode::from_anyhow(&e);
+            if !cli.quiet {
+                eprintln!("Error: {:#}", e);
+            }
+            ExitCode::from(exit.code as u8)
         }
     }
 }

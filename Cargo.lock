@@ -6162,6 +6162,8 @@ dependencies = [
  "clap",
  "colored",
  "hex",
+ "pqcrypto-mldsa",
+ "pqcrypto-traits",
  "serde_json",
  "sha3",
  "solana-client",
