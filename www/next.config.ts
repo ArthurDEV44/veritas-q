@@ -1,6 +1,21 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
+
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+  cacheOnNavigation: true,
+  reloadOnOnline: false,
+  disable: process.env.NODE_ENV === "development",
+});
+
+// Suppress Turbopack warning for Serwist
+process.env.SERWIST_SUPPRESS_TURBOPACK_WARNING = "1";
 
 const nextConfig: NextConfig = {
+  // Empty turbopack config to satisfy Next.js 16 validation
+  // Serwist uses webpack plugin, Turbopack doesn't affect production build
+  turbopack: {},
   async headers() {
     return [
       {
@@ -49,4 +64,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);
