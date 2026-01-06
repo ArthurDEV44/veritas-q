@@ -29,3 +29,63 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// Push notification event handler
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  try {
+    const data = event.data.json();
+    const title = data.title || "Veritas Q";
+    const options: NotificationOptions = {
+      body: data.body || "",
+      icon: data.icon || "/icons/icon-192x192.png",
+      badge: data.badge || "/icons/icon-96x96.png",
+      tag: data.tag,
+      data: data.data,
+      requireInteraction: false,
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch {
+    // Fallback for non-JSON payloads
+    const text = event.data.text();
+    event.waitUntil(
+      self.registration.showNotification("Veritas Q", {
+        body: text,
+        icon: "/icons/icon-192x192.png",
+      })
+    );
+  }
+});
+
+// Notification click handler
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const data = event.notification.data;
+  let url = "/";
+
+  // Navigate to specific URL if provided
+  if (data?.url) {
+    url = data.url;
+  }
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clientList) => {
+        // Focus existing window if available
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && "focus" in client) {
+            client.navigate(url);
+            return client.focus();
+          }
+        }
+        // Open new window if no existing window
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(url);
+        }
+      })
+  );
+});
