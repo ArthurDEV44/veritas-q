@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Camera, Shield } from "lucide-react";
 import CameraCapture from "@/components/CameraCapture";
+import CameraPermissionGuard from "@/components/CameraPermissionGuard";
 import Verifier from "@/components/Verifier";
 
 type TabId = "scan" | "check";
@@ -105,22 +106,24 @@ export default function Home() {
             <div className="space-y-6">
               <div className="text-center sm:text-left">
                 <h1 className="text-2xl sm:text-3xl font-bold">
-                  Quantum Seal
+                  Sceau Quantique
                 </h1>
                 <p className="text-foreground/60 mt-2">
-                  Capture and seal media with quantum entropy
+                  Capturez et scellez vos médias avec l&apos;entropie quantique
                 </p>
               </div>
-              <CameraCapture />
+              <CameraPermissionGuard>
+                <CameraCapture />
+              </CameraPermissionGuard>
             </div>
           ) : (
             <div className="space-y-6">
               <div className="text-center sm:text-left">
                 <h1 className="text-2xl sm:text-3xl font-bold">
-                  Verify Authenticity
+                  Vérifier l&apos;authenticité
                 </h1>
                 <p className="text-foreground/60 mt-2">
-                  Check if media has a valid Veritas seal
+                  Vérifiez si un média possède un sceau Veritas valide
                 </p>
               </div>
               <Verifier />
