@@ -45,7 +45,13 @@ pub fn create_router_with_config(config: &Config) -> Router {
             CorsLayer::new()
                 .allow_origin(origins)
                 .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
+                .allow_headers([
+                    header::CONTENT_TYPE,
+                    header::ACCEPT,
+                    header::AUTHORIZATION,
+                    header::ORIGIN,
+                ])
+                .allow_credentials(true)
         }
         _ => {
             tracing::warn!("CORS: Allowing all origins (dev mode)");
