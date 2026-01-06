@@ -35,16 +35,17 @@ Le fichier `anu.rs` implémente un client pour l'API QRNG de l'Australian Nation
 #### 2.3 Nettoyage du struct
 - [x] Restructurer avec `AnuQrngConfig` pour une meilleure organisation
 
-### Phase 3 : Observabilité (Priorité basse)
+### Phase 3 : Observabilité (Priorité basse) ✅ TERMINÉE
 
 #### 3.1 Tracing et métriques
-- [ ] Ajouter `#[instrument]` sur `get_entropy()`
-- [ ] Logger les latences de requête
-- [ ] Émettre des métriques : succès/échecs, temps de réponse
+- [x] Ajouter `#[instrument]` sur `get_entropy()`, `new()`, `with_config()`
+- [x] Logger les latences de requête (`latency_ms`, `total_latency_ms`)
+- [x] Émettre des événements : succès/échecs, temps de réponse, retries
+- [x] Utiliser `retry_notify` pour logger chaque tentative de retry
 
 #### 3.2 Optimisations mineures
-- [ ] Simplifier `hex_to_bytes()` avec `try_into()`
-- [ ] Ajouter tests d'intégration avec mock server (wiremock)
+- [x] Simplifier `hex_to_bytes()` avec `try_into()` (fait en Phase 1)
+- [ ] Ajouter tests d'intégration avec mock server (wiremock) - optionnel
 
 ### Phase 4 : Évolution future
 

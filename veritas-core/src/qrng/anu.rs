@@ -8,12 +8,14 @@
 //! - Automatic retry with exponential backoff on transient errors
 //! - TLS 1.3 enforcement with HTTPS-only connections
 //! - Configurable API endpoint and timeout
+//! - Full observability with tracing instrumentation
 
 use async_trait::async_trait;
-use backoff::{future::retry, ExponentialBackoff};
+use backoff::{future::retry_notify, ExponentialBackoff};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tracing::{debug, info, instrument, warn};
 
 use super::{QrngSource, QuantumEntropySource};
 use crate::error::{Result, VeritasError};
@@ -93,11 +95,13 @@ impl AnuQrng {
     /// Create a new ANU QRNG client with default settings.
     ///
     /// Uses TLS 1.3 with HTTPS-only connections for security.
+    #[instrument(level = "debug", skip_all)]
     pub fn new() -> Result<Self> {
         Self::with_config(AnuQrngConfig::default())
     }
 
     /// Create a new ANU QRNG client with custom timeout.
+    #[instrument(level = "debug", skip_all, fields(timeout_ms = timeout.as_millis() as u64))]
     pub fn with_timeout(timeout: Duration) -> Result<Self> {
         Self::with_config(AnuQrngConfig {
             timeout,
@@ -106,14 +110,25 @@ impl AnuQrng {
     }
 
     /// Create a new ANU QRNG client with custom configuration.
+    #[instrument(level = "debug", skip_all, fields(
+        api_url = %config.api_url,
+        timeout_ms = config.timeout.as_millis() as u64,
+        max_retries = config.max_retries
+    ))]
     pub fn with_config(config: AnuQrngConfig) -> Result<Self> {
+        debug!("Creating ANU QRNG client");
+
         let client = Client::builder()
             .timeout(config.timeout)
             .https_only(true)
             .min_tls_version(reqwest::tls::Version::TLS_1_3)
             .build()
-            .map_err(|e| VeritasError::QrngError(format!("Failed to create HTTP client: {e}")))?;
+            .map_err(|e| {
+                warn!(error = %e, "Failed to create HTTP client");
+                VeritasError::QrngError(format!("Failed to create HTTP client: {e}"))
+            })?;
 
+        info!("ANU QRNG client created successfully");
         Ok(Self { client, config })
     }
 
@@ -153,21 +168,35 @@ impl AnuQrng {
         }
     }
 
-    /// Fetch entropy with retry logic.
+    /// Fetch entropy with retry logic (single attempt).
+    #[instrument(level = "debug", skip(self), fields(api_url = %self.config.api_url))]
     async fn fetch_entropy_internal(
         &self,
     ) -> std::result::Result<[u8; 32], backoff::Error<VeritasError>> {
+        let start = Instant::now();
+
         let response = self
             .client
             .get(&self.config.api_url)
             .send()
             .await
             .map_err(|e| {
+                let latency_ms = start.elapsed().as_millis();
                 if Self::is_transient_error(&e) {
+                    warn!(
+                        error = %e,
+                        latency_ms = latency_ms as u64,
+                        "Transient error, will retry"
+                    );
                     backoff::Error::transient(VeritasError::QrngError(format!(
                         "Transient error (will retry): {e}"
                     )))
                 } else {
+                    warn!(
+                        error = %e,
+                        latency_ms = latency_ms as u64,
+                        "Permanent error, aborting"
+                    );
                     backoff::Error::permanent(VeritasError::QrngError(format!(
                         "ANU QRNG request failed: {e}"
                     )))
@@ -175,32 +204,54 @@ impl AnuQrng {
             })?;
 
         let status = response.status();
+        debug!(status = %status, "Received HTTP response");
+
         if !status.is_success() {
+            let latency_ms = start.elapsed().as_millis();
             let err = VeritasError::QrngError(format!("ANU QRNG API returned status: {status}"));
             return if Self::is_transient_status(status) {
+                warn!(
+                    status = %status,
+                    latency_ms = latency_ms as u64,
+                    "Transient HTTP status, will retry"
+                );
                 Err(backoff::Error::transient(err))
             } else {
+                warn!(
+                    status = %status,
+                    latency_ms = latency_ms as u64,
+                    "Permanent HTTP error"
+                );
                 Err(backoff::Error::permanent(err))
             };
         }
 
         let anu_response: AnuResponse = response.json().await.map_err(|e| {
+            warn!(error = %e, "Failed to parse JSON response");
             backoff::Error::permanent(VeritasError::QrngError(format!(
                 "Failed to parse ANU QRNG response: {e}"
             )))
         })?;
 
         if !anu_response.success {
+            warn!("API returned success=false");
             return Err(backoff::Error::permanent(VeritasError::QrngError(
                 "ANU QRNG API returned success=false".into(),
             )));
         }
 
         if anu_response.data.is_empty() {
+            warn!("API returned empty data array");
             return Err(backoff::Error::permanent(VeritasError::QrngError(
                 "ANU QRNG API returned empty data".into(),
             )));
         }
+
+        let latency_ms = start.elapsed().as_millis();
+        debug!(
+            latency_ms = latency_ms as u64,
+            "Request completed successfully"
+        );
 
         Self::hex_to_bytes(&anu_response.data[0]).map_err(backoff::Error::permanent)
     }
@@ -208,10 +259,55 @@ impl AnuQrng {
 
 #[async_trait]
 impl QuantumEntropySource for AnuQrng {
+    /// Fetch 256 bits of quantum entropy from ANU QRNG.
+    ///
+    /// This method automatically retries on transient errors with exponential backoff.
+    #[instrument(
+        level = "info",
+        skip(self),
+        fields(
+            source = "anu",
+            max_retries = self.config.max_retries
+        )
+    )]
     async fn get_entropy(&self) -> Result<[u8; 32]> {
+        let start = Instant::now();
         let backoff = self.build_backoff();
 
-        retry(backoff, || async { self.fetch_entropy_internal().await }).await
+        debug!("Fetching quantum entropy from ANU QRNG");
+
+        let result = retry_notify(
+            backoff,
+            || async { self.fetch_entropy_internal().await },
+            |err: VeritasError, duration: Duration| {
+                warn!(
+                    error = %err,
+                    retry_after_ms = duration.as_millis() as u64,
+                    "Retry scheduled"
+                );
+            },
+        )
+        .await;
+
+        let total_latency_ms = start.elapsed().as_millis();
+
+        match &result {
+            Ok(_) => {
+                info!(
+                    total_latency_ms = total_latency_ms as u64,
+                    "Successfully fetched quantum entropy"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    total_latency_ms = total_latency_ms as u64,
+                    "Failed to fetch quantum entropy after all retries"
+                );
+            }
+        }
+
+        result
     }
 
     fn source_id(&self) -> QrngSource {
