@@ -1,0 +1,35 @@
+[package]
+name = "veritas-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Opt out of the workspace
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.veritas-core]
+path = ".."
+# Disable network feature for fuzzing - we only need verification
+default-features = false
+
+# Fuzz target for CBOR deserialization
+[[bin]]
+name = "fuzz_from_cbor"
+path = "fuzz_targets/fuzz_from_cbor.rs"
+test = false
+doc = false
+bench = false
+
+# Fuzz target for seal verification
+[[bin]]
+name = "fuzz_verify"
+path = "fuzz_targets/fuzz_verify.rs"
+test = false
+doc = false
+bench = false

@@ -1,4 +1,3 @@
-use chrono::Utc;
 use pqcrypto_mldsa::mldsa65;
 use pqcrypto_traits::sign::{PublicKey, SecretKey as SecretKeyTrait, SignedMessage};
 use serde::{Deserialize, Serialize};
@@ -7,6 +6,8 @@ use zeroize::Zeroize;
 
 use crate::error::{Result, VeritasError, CURRENT_SEAL_VERSION, MAX_SEAL_SIZE};
 use crate::qrng::QrngSource;
+#[cfg(feature = "network")]
+use chrono::Utc;
 #[cfg(feature = "network")]
 use crate::qrng::QuantumEntropySource;
 

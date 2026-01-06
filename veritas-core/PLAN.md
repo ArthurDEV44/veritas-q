@@ -212,25 +212,60 @@ fn test_verification_result_distinction() { /* ... */ }
 
 ### 4.2 Fuzzing du parser CBOR
 
-Ajouter dans `Cargo.toml`:
-```toml
-[dev-dependencies]
-arbitrary = { version = "1", features = ["derive"] }
+Structure de fuzzing avec `cargo-fuzz` :
 
-[[test]]
-name = "fuzz_seal"
-path = "tests/fuzz_seal.rs"
+```
+veritas-core/
+└── fuzz/
+    ├── Cargo.toml
+    └── fuzz_targets/
+        ├── fuzz_from_cbor.rs   # Fuzzing de VeritasSeal::from_cbor()
+        └── fuzz_verify.rs       # Fuzzing de verify() avec seals malformés
 ```
 
-Cible de fuzzing:
-```rust
-#[derive(Arbitrary)]
-struct FuzzInput {
-    bytes: Vec<u8>,
-}
+**Installation et exécution** :
 
-fuzz_target!(|input: FuzzInput| {
-    let _ = VeritasSeal::from_cbor(&input.bytes);
+```bash
+# Installer cargo-fuzz (une seule fois)
+cargo install cargo-fuzz
+
+# Installer le toolchain nightly (requis)
+rustup install nightly
+
+# Lancer le fuzzing sur from_cbor (depuis veritas-core/)
+cargo +nightly fuzz run fuzz_from_cbor
+
+# Lancer le fuzzing sur verify
+cargo +nightly fuzz run fuzz_verify
+
+# Limiter le temps de fuzzing (ex: 60 secondes)
+cargo +nightly fuzz run fuzz_from_cbor -- -max_total_time=60
+
+# Voir les cibles disponibles
+cargo +nightly fuzz list
+```
+
+**Résultats attendus** :
+- Le fuzzer explore automatiquement les chemins de code
+- Les crashs sont sauvegardés dans `fuzz/artifacts/`
+- Le corpus est sauvegardé dans `fuzz/corpus/` pour reprise
+
+**Cibles de fuzzing** :
+
+`fuzz_from_cbor.rs` - Teste la désérialisation CBOR :
+```rust
+fuzz_target!(|data: &[u8]| {
+    let _ = VeritasSeal::from_cbor(data);
+});
+```
+
+`fuzz_verify.rs` - Teste la vérification avec données arbitraires :
+```rust
+fuzz_target!(|data: &[u8]| {
+    if let Ok(seal) = VeritasSeal::from_cbor(data) {
+        let _ = seal.verify();
+        let _ = seal.verify_detailed();
+    }
 });
 ```
 
@@ -271,7 +306,7 @@ Ajouter un module `c2pa.rs` pour l'export/import JUMBF.
 - [x] Phase 3.2 : Pré-allocation buffers
 - [x] Phase 3.3 : Éviter clone QrngSource (référence dans SignablePayload)
 - [x] Phase 4.1 : Nouveaux tests (`test_seal_too_large_rejected`, `test_unsupported_version_rejected`)
-- [ ] Phase 4.2 : Fuzzing CBOR
+- [x] Phase 4.2 : Fuzzing CBOR (`cargo +nightly fuzz run fuzz_from_cbor`)
 - [x] Exécuter `cargo clippy --workspace -- -D warnings`
 - [x] Exécuter `cargo test --workspace`
 

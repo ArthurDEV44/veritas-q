@@ -5,6 +5,7 @@ members = [
     "veritas-wasm",
     "veritas-server",
 ]
+exclude = ["veritas-core/fuzz"]
 resolver = "2"
 
 [workspace.package]
