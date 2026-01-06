@@ -8,7 +8,7 @@ mod anu;
 mod mock;
 
 #[cfg(feature = "network")]
-pub use anu::AnuQrng;
+pub use anu::{AnuQrng, AnuQrngConfig};
 #[cfg(feature = "network")]
 pub use mock::MockQrng;
 

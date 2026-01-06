@@ -7,7 +7,7 @@ description = "Core cryptographic primitives for Veritas Q quantum-authenticated
 
 [features]
 default = ["network"]
-network = ["tokio", "reqwest", "async-trait"]
+network = ["tokio", "reqwest", "async-trait", "backoff"]
 
 [dependencies]
 pqcrypto-mldsa.workspace = true
@@ -26,6 +26,7 @@ zeroize.workspace = true
 tokio = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
+backoff = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
