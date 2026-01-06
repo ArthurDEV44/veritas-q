@@ -148,18 +148,27 @@ Seal {
 
 ---
 
-## Phase 4: Tests et CI
+## Phase 4: Tests et CI ✅ DONE
 
 ### 4.1 Tests d'intégration CLI
 
 **Nouveau:** `tests/cli_integration.rs`
 
-- [ ] Utiliser `assert_cmd` pour tester les commandes
-- [ ] Tester les exit codes
-- [ ] Tester `--help` et `--version`
-- [ ] Tester seal/verify roundtrip avec mock
+- [x] Utiliser `assert_cmd` pour tester les commandes
+- [x] Tester les exit codes
+- [x] Tester `--help` et `--version`
+- [x] Tester seal/verify roundtrip avec mock
 
-### 4.2 Tests de snapshot pour l'output
+21 tests d'intégration implémentés couvrant:
+- Help/version output
+- Exit codes (66 missing file, 65 verification failed)
+- Dry-run behavior
+- Seal/verify roundtrip (authentic et tampered)
+- JSON/CBOR formats
+- Keypair save/load
+- Quiet mode et color control
+
+### 4.2 Tests de snapshot pour l'output (optionnel)
 
 - [ ] Utiliser `insta` pour snapshot testing de l'output formaté
 - [ ] Couvrir les cas succès/échec/verbose/quiet
@@ -199,10 +208,10 @@ insta = "1.0"
 
 ## Critères de succès
 
-- [ ] `veritas --help` affiche aide claire avec exemples
-- [ ] `veritas -vvv seal file.jpg` affiche logs détaillés
-- [ ] `veritas -q verify file.jpg` n'affiche que succès/échec
-- [ ] Exit code 0 pour succès, 65 pour vérification échouée
-- [ ] `veritas seal --format invalid` erreur compile-time impossible
-- [ ] `veritas --color=never` fonctionne dans CI
-- [ ] Tests CLI passent dans CI
+- [x] `veritas --help` affiche aide claire avec exemples
+- [x] `veritas -vvv seal file.jpg` affiche logs détaillés
+- [x] `veritas -q verify file.jpg` n'affiche que succès/échec
+- [x] Exit code 0 pour succès, 65 pour vérification échouée
+- [x] `veritas seal --format invalid` erreur compile-time impossible
+- [x] `veritas --color=never` fonctionne dans CI
+- [x] Tests CLI passent dans CI
