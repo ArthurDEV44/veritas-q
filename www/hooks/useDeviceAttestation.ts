@@ -57,12 +57,16 @@ export interface DeviceAttestationState {
 
 interface StartRegistrationResponse {
   challenge_id: string;
-  public_key: PublicKeyCredentialCreationOptions;
+  public_key: {
+    publicKey: PublicKeyCredentialCreationOptions;
+  };
 }
 
 interface StartAuthenticationResponse {
   challenge_id: string;
-  public_key: PublicKeyCredentialRequestOptions;
+  public_key: {
+    publicKey: PublicKeyCredentialRequestOptions;
+  };
 }
 
 interface DeviceAttestationResponse {
@@ -217,8 +221,9 @@ export function useDeviceAttestation(): DeviceAttestationState {
         const startData: StartRegistrationResponse = await startResponse.json();
 
         // Fix the options (convert base64url strings to ArrayBuffers)
+        // Note: webauthn-rs wraps options in { publicKey: ... }
         const publicKeyOptions = fixPublicKeyCreationOptions(
-          startData.public_key
+          startData.public_key.publicKey
         );
 
         // Step 2: Create credential with platform authenticator
@@ -320,8 +325,8 @@ export function useDeviceAttestation(): DeviceAttestationState {
 
       const startData: StartAuthenticationResponse = await startResponse.json();
 
-      // Fix the options
-      const publicKeyOptions = fixPublicKeyRequestOptions(startData.public_key);
+      // Fix the options (webauthn-rs wraps in { publicKey: ... })
+      const publicKeyOptions = fixPublicKeyRequestOptions(startData.public_key.publicKey);
 
       // Step 2: Get assertion
       const credential = (await navigator.credentials.get({
