@@ -1,0 +1,27 @@
+# Render Blueprint - Infrastructure as Code
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: veritas-q-api
+    runtime: docker
+    dockerfilePath: ./veritas-server/Dockerfile
+    dockerContext: .
+    region: frankfurt  # EU region, change to oregon for US
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+      - key: RUST_LOG
+        value: veritas_server=info,tower_http=info
+      - key: ALLOWED_ORIGINS
+        sync: false  # Set manually in Render dashboard
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_PER_SEC
+        value: "10"
+      - key: RATE_LIMIT_BURST
+        value: "20"
