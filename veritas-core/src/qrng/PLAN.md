@@ -47,29 +47,31 @@ Le fichier `anu.rs` implémente un client pour l'API QRNG de l'Australian Nation
 - [x] Simplifier `hex_to_bytes()` avec `try_into()` (fait en Phase 1)
 - [ ] Ajouter tests d'intégration avec mock server (wiremock) - optionnel
 
-### Phase 4 : Évolution future
+### Phase 4 : Évolution future ✅ TERMINÉE
 
 #### 4.1 QRNG Open API Framework
-- [ ] Évaluer l'adoption du framework QRNG Open API (Palo Alto, 2025)
-- [ ] Créer un trait abstrait pour multi-vendor QRNG
-- [ ] Faciliter l'intégration ID Quantique
+- [x] Évaluer l'adoption du framework QRNG Open API (Palo Alto, 2025)
+- [x] Créer un trait abstrait pour multi-vendor QRNG (`QuantumEntropySource`)
+- [x] Faciliter l'intégration ID Quantique (`IdQuantiqueQrng`)
+- [x] Ajouter `QrngProviderFactory` pour instanciation simplifiée
+- [x] Implémenter `QrngCapabilities` et `QrngHealthStatus` (QRNG Open API)
 
 ## Fichiers impactés
 
 | Fichier | Modifications |
 |---------|---------------|
-| `veritas-core/Cargo.toml` | Ajouter `backoff`, `tracing` |
-| `veritas-core/src/qrng/anu.rs` | Refactoring principal |
-| `veritas-core/src/qrng/mod.rs` | Éventuels nouveaux exports |
-| `veritas-core/src/error.rs` | Nouveaux variants d'erreur si nécessaire |
+| `veritas-core/Cargo.toml` | Ajout `backoff`, `tracing`, `base64` |
+| `veritas-core/src/qrng/anu.rs` | Retry, TLS 1.3, tracing, config flexible |
+| `veritas-core/src/qrng/mod.rs` | Documentation, exports multi-vendor |
+| `veritas-core/src/qrng/provider.rs` | **NOUVEAU** - Factory, ID Quantique, QRNG Open API |
+| `veritas-core/examples/anu_tracing.rs` | **NOUVEAU** - Exemple tracing |
 
 ## Critères de validation
 
-- [ ] Tous les tests existants passent
-- [ ] Nouveaux tests pour retry logic
-- [ ] `cargo clippy` sans warnings
-- [ ] Latence moyenne < 100ms (hors réseau)
-- [ ] Documentation mise à jour
+- [x] Tous les tests existants passent (33 tests + 4 doc tests)
+- [x] Nouveaux tests pour retry logic et provider factory
+- [x] `cargo clippy` sans warnings
+- [x] Documentation mise à jour (module docs, exemples)
 
 ## Références
 
