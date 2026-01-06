@@ -123,7 +123,7 @@ enum Commands {
     },
 }
 
-fn setup_logging(verbose: u8, quiet: bool) {
+fn setup_logging(verbose: u8, quiet: bool, color: ColorMode) {
     let level = if quiet {
         Level::ERROR
     } else {
@@ -139,10 +139,17 @@ fn setup_logging(verbose: u8, quiet: bool) {
         .with_default_directive(level.into())
         .from_env_lossy();
 
+    let use_ansi = match color {
+        ColorMode::Always => true,
+        ColorMode::Never => false,
+        ColorMode::Auto => std::io::IsTerminal::is_terminal(&std::io::stderr()),
+    };
+
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
         .without_time()
+        .with_ansi(use_ansi)
         .init();
 }
 
@@ -159,7 +166,7 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     setup_color(cli.color);
-    setup_logging(cli.verbose, cli.quiet);
+    setup_logging(cli.verbose, cli.quiet, cli.color);
 
     let result = match cli.command {
         Commands::Seal {
