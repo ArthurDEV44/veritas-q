@@ -267,9 +267,9 @@ Ajouter un module `c2pa.rs` pour l'export/import JUMBF.
 - [x] Phase 2.1 : try_from pour timestamps
 - [x] Phase 2.2 : Drift bidirectionnel (`abs_diff`)
 - [x] Phase 2.3 : VerificationResult enum + ContentVerificationResult + verify_content()
-- [ ] Phase 3.1 : Tableaux fixes signatures
+- [x] Phase 3.1 : Constantes ML-DSA-65 + validation tailles dans from_cbor
 - [x] Phase 3.2 : Pré-allocation buffers
-- [ ] Phase 3.3 : Éviter clone QrngSource
+- [x] Phase 3.3 : Éviter clone QrngSource (référence dans SignablePayload)
 - [x] Phase 4.1 : Nouveaux tests (`test_seal_too_large_rejected`, `test_unsupported_version_rejected`)
 - [ ] Phase 4.2 : Fuzzing CBOR
 - [x] Exécuter `cargo clippy --workspace -- -D warnings`

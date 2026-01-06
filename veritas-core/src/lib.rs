@@ -46,7 +46,8 @@ pub use qrng::QrngSource;
 pub use seal::{
     generate_keypair, generate_keypair_raw, BlockchainAnchor, ContentHash,
     ContentVerificationResult, DeviceAttestation, MediaType, VerificationResult, VeritasSeal,
-    ZeroizingSecretKey,
+    ZeroizingSecretKey, MLDSA65_PUBLIC_KEY_BYTES, MLDSA65_SECRET_KEY_BYTES,
+    MLDSA65_SIGNATURE_BYTES,
 };
 
 #[cfg(feature = "network")]

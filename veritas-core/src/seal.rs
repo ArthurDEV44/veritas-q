@@ -14,6 +14,14 @@ use crate::qrng::QuantumEntropySource;
 #[cfg(feature = "network")]
 const MAX_ENTROPY_TIMESTAMP_DRIFT_SECS: u64 = 5;
 
+// ML-DSA-65 (FIPS 204) cryptographic sizes
+/// ML-DSA-65 public key size in bytes.
+pub const MLDSA65_PUBLIC_KEY_BYTES: usize = 1952;
+/// ML-DSA-65 secret key size in bytes.
+pub const MLDSA65_SECRET_KEY_BYTES: usize = 4032;
+/// ML-DSA-65 detached signature size in bytes.
+pub const MLDSA65_SIGNATURE_BYTES: usize = 3309;
+
 /// Wrapper for ML-DSA-65 secret key that zeroizes memory on drop.
 ///
 /// This ensures secret key material is securely erased from memory
@@ -304,13 +312,16 @@ impl SealBuilder {
         // Create content hash
         let content_hash = ContentHash::from_bytes(&self.content);
 
+        // Get QRNG source identifier
+        let qrng_source = qrng.source_id();
+
         // Create the signable payload (everything except signature)
         let signable = SignablePayload {
             capture_timestamp_utc,
             capture_location: &self.capture_location,
             device_attestation: &self.device_attestation,
             qrng_entropy: &qrng_entropy,
-            qrng_source: qrng.source_id(),
+            qrng_source: &qrng_source,
             entropy_timestamp,
             content_hash: &content_hash,
             media_type: self.media_type,
@@ -362,7 +373,7 @@ struct SignablePayload<'a> {
     capture_location: &'a Option<String>,
     device_attestation: &'a Option<DeviceAttestation>,
     qrng_entropy: &'a [u8; 32],
-    qrng_source: QrngSource,
+    qrng_source: &'a QrngSource,
     entropy_timestamp: u64,
     content_hash: &'a ContentHash,
     media_type: MediaType,
@@ -384,13 +395,13 @@ impl VeritasSeal {
     /// Unlike [`verify`], this method distinguishes between different
     /// failure modes (invalid signature, payload mismatch, malformed keys).
     pub fn verify_detailed(&self) -> Result<VerificationResult> {
-        // Reconstruct the signable payload
+        // Reconstruct the signable payload (no clone needed - use reference)
         let signable = SignablePayload {
             capture_timestamp_utc: self.capture_timestamp_utc,
             capture_location: &self.capture_location,
             device_attestation: &self.device_attestation,
             qrng_entropy: &self.qrng_entropy,
-            qrng_source: self.qrng_source.clone(),
+            qrng_source: &self.qrng_source,
             entropy_timestamp: self.entropy_timestamp,
             content_hash: &self.content_hash,
             media_type: self.media_type,
@@ -483,6 +494,25 @@ impl VeritasSeal {
                 seal.version,
                 CURRENT_SEAL_VERSION,
             ));
+        }
+
+        // Validate cryptographic field sizes (ML-DSA-65)
+        if seal.public_key.len() != MLDSA65_PUBLIC_KEY_BYTES {
+            return Err(VeritasError::InvalidSeal(format!(
+                "invalid public key size: expected {} bytes, got {}",
+                MLDSA65_PUBLIC_KEY_BYTES,
+                seal.public_key.len()
+            )));
+        }
+
+        // Note: signature size varies because SignedMessage includes the message
+        // Minimum size is MLDSA65_SIGNATURE_BYTES (detached signature)
+        if seal.signature.len() < MLDSA65_SIGNATURE_BYTES {
+            return Err(VeritasError::InvalidSeal(format!(
+                "signature too short: minimum {} bytes, got {}",
+                MLDSA65_SIGNATURE_BYTES,
+                seal.signature.len()
+            )));
         }
 
         Ok(seal)
@@ -749,5 +779,45 @@ mod tests {
             ContentVerificationResult::SignatureFailed(_)
         ));
         assert!(!result.is_authentic());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_public_key_size_rejected() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test".to_vec();
+        let mut seal = SealBuilder::new(content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Truncate public key
+        seal.public_key.truncate(100);
+
+        let cbor = seal.to_cbor().expect("Failed to serialize");
+        let result = VeritasSeal::from_cbor(&cbor);
+
+        assert!(matches!(result, Err(VeritasError::InvalidSeal(_))));
+    }
+
+    #[tokio::test]
+    async fn test_signature_too_short_rejected() {
+        let qrng = MockQrng::default();
+        let (public_key, secret_key) = generate_keypair();
+
+        let content = b"Test".to_vec();
+        let mut seal = SealBuilder::new(content, MediaType::Image)
+            .build_secure(&qrng, &secret_key, &public_key)
+            .await
+            .expect("Failed to create seal");
+
+        // Truncate signature below minimum
+        seal.signature.truncate(100);
+
+        let cbor = seal.to_cbor().expect("Failed to serialize");
+        let result = VeritasSeal::from_cbor(&cbor);
+
+        assert!(matches!(result, Err(VeritasError::InvalidSeal(_))));
     }
 }
