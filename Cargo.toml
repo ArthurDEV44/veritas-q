@@ -32,6 +32,10 @@ ciborium = "0.2"  # CBOR serialization
 # Hashing
 sha3 = "0.10"
 
+# Image processing (perceptual hashing)
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+image_hasher = "2.0"
+
 # Utilities
 thiserror = "2"
 zeroize = { version = "1.8", features = ["derive"] }

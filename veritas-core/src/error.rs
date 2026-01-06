@@ -39,6 +39,10 @@ pub enum VeritasError {
     #[error("Invalid timestamp: {reason}")]
     InvalidTimestamp { reason: String },
 
+    #[cfg(feature = "perceptual-hash")]
+    #[error("Perceptual hash error: {0}")]
+    PerceptualHashError(String),
+
     #[cfg(feature = "network")]
     #[error("HTTP request error: {0}")]
     HttpError(#[from] reqwest::Error),

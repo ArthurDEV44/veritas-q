@@ -6,8 +6,9 @@ license.workspace = true
 description = "Core cryptographic primitives for Veritas Q quantum-authenticated media seals"
 
 [features]
-default = ["network"]
+default = ["network", "perceptual-hash"]
 network = ["tokio", "reqwest", "async-trait", "backoff"]
+perceptual-hash = ["image", "image_hasher"]
 
 [dependencies]
 pqcrypto-mldsa.workspace = true
@@ -29,6 +30,10 @@ tokio = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 backoff = { workspace = true, optional = true }
+
+# Optional perceptual hashing dependencies
+image = { workspace = true, optional = true }
+image_hasher = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

@@ -159,7 +159,7 @@ pub struct ContentHash {
 }
 
 impl ContentHash {
-    /// Create a content hash from raw bytes.
+    /// Create a content hash from raw bytes (cryptographic hash only).
     pub fn from_bytes(data: &[u8]) -> Self {
         let mut hasher = Sha3_256::new();
         hasher.update(data);
@@ -172,6 +172,45 @@ impl ContentHash {
             crypto_hash,
             perceptual_hash: None,
         }
+    }
+
+    /// Create a content hash with both cryptographic and perceptual hashes.
+    ///
+    /// The perceptual hash is computed using pHash (DCT-based) algorithm for images.
+    /// If the content is not a valid image, only the cryptographic hash is computed.
+    #[cfg(feature = "perceptual-hash")]
+    pub fn from_bytes_with_phash(data: &[u8]) -> Self {
+        use crate::phash::compute_phash;
+
+        let mut hasher = Sha3_256::new();
+        hasher.update(data);
+        let result = hasher.finalize();
+
+        let mut crypto_hash = [0u8; 32];
+        crypto_hash.copy_from_slice(&result);
+
+        // Try to compute perceptual hash (returns None if not a valid image)
+        let perceptual_hash = compute_phash(data);
+
+        Self {
+            crypto_hash,
+            perceptual_hash,
+        }
+    }
+
+    /// Check if this content hash has a perceptual hash component.
+    pub fn has_perceptual_hash(&self) -> bool {
+        self.perceptual_hash.is_some()
+    }
+
+    /// Get the cryptographic hash as a hex string.
+    pub fn crypto_hash_hex(&self) -> String {
+        hex::encode(self.crypto_hash)
+    }
+
+    /// Get the perceptual hash as a hex string, if present.
+    pub fn perceptual_hash_hex(&self) -> Option<String> {
+        self.perceptual_hash.as_ref().map(hex::encode)
     }
 }
 
@@ -310,7 +349,15 @@ impl SealBuilder {
             });
         }
 
-        // Create content hash
+        // Create content hash (with perceptual hash for images if feature enabled)
+        #[cfg(feature = "perceptual-hash")]
+        let content_hash = if self.media_type == MediaType::Image {
+            ContentHash::from_bytes_with_phash(&self.content)
+        } else {
+            ContentHash::from_bytes(&self.content)
+        };
+
+        #[cfg(not(feature = "perceptual-hash"))]
         let content_hash = ContentHash::from_bytes(&self.content);
 
         // Get QRNG source identifier

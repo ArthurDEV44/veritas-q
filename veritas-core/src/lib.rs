@@ -37,6 +37,8 @@
 //! ```
 
 pub mod error;
+#[cfg(feature = "perceptual-hash")]
+pub mod phash;
 pub mod qrng;
 pub mod seal;
 
@@ -56,6 +58,10 @@ pub use seal::SealBuilder;
 // Network-dependent exports (not available in Wasm)
 #[cfg(feature = "network")]
 pub use qrng::{AnuQrng, MockQrng, QuantumEntropySource};
+
+// Perceptual hashing exports
+#[cfg(feature = "perceptual-hash")]
+pub use phash::{compute_phash, HashAlgorithm, PerceptualHash, PerceptualHasher};
 
 #[cfg(all(test, feature = "network"))]
 mod tests {
