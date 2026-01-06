@@ -9,7 +9,9 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+use tower_governor::{
+    governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
+};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -77,7 +79,10 @@ pub fn create_router_with_config(config: &Config) -> Router {
 
     // Conditionally apply rate limiting (disabled in tests, enabled in production)
     if config.rate_limit_enabled {
+        // Use SmartIpKeyExtractor to support proxies (X-Forwarded-For, X-Real-Ip)
+        // and fall back to direct connection IP
         let governor_conf = GovernorConfigBuilder::default()
+            .key_extractor(SmartIpKeyExtractor)
             .per_second(config.rate_limit_per_sec)
             .burst_size(config.rate_limit_burst)
             .finish()
