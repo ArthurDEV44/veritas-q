@@ -21,6 +21,7 @@ Veritas Q provides **unforgeable digital seals** for media content using:
 - **Post-Quantum Cryptography** - ML-DSA-65 signatures (FIPS 204)
 - **Perceptual Hashing** - Robust image fingerprinting (pHash/dHash)
 - **Blockchain Anchoring** - Optional Solana timestamping
+- **C2PA Integration** - Content Authenticity Initiative compatibility
 
 ### How It Works
 
@@ -28,6 +29,7 @@ Veritas Q provides **unforgeable digital seals** for media content using:
 2. The seal contains QRNG entropy, content hash, and a post-quantum signature
 3. **Verify** authenticity later via `POST /verify`
 4. Any modification (even 1 pixel) breaks the cryptographic seal
+5. Optionally embed as **C2PA manifest** for interoperability with Adobe/Microsoft tools
 
 ### Use Cases
 
@@ -52,6 +54,7 @@ Veritas Q provides **unforgeable digital seals** for media content using:
     tags(
         (name = "Sealing", description = "Create quantum-authenticated seals for media content"),
         (name = "Verification", description = "Verify seals against content to detect tampering"),
+        (name = "C2PA", description = "C2PA manifest operations for Content Authenticity Initiative compatibility"),
         (name = "Health", description = "Service health and readiness endpoints")
     ),
     paths(
@@ -70,3 +73,6 @@ Veritas Q provides **unforgeable digital seals** for media content using:
     )
 )]
 pub struct ApiDoc;
+
+// Note: C2PA paths would be added here when utoipa supports conditional compilation better
+// For now, they're documented via their own #[utoipa::path] attributes

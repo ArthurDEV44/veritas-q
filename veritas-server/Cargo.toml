@@ -13,8 +13,14 @@ path = "src/lib.rs"
 name = "veritas-server"
 path = "src/main.rs"
 
+[features]
+default = ["c2pa"]
+c2pa = ["veritas-core/c2pa", "tempfile"]
+
 [dependencies]
-veritas-core.workspace = true
+veritas-core = { workspace = true, features = ["c2pa"] }
+tempfile = { version = "3", optional = true }
+hex.workspace = true
 axum.workspace = true
 tokio.workspace = true
 tower-http.workspace = true

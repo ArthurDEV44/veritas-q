@@ -21,6 +21,8 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::config::Config;
+#[cfg(feature = "c2pa")]
+use crate::handlers::{c2pa_embed_handler, c2pa_verify_handler};
 use crate::handlers::{health, ready, seal_handler, verify_handler};
 use crate::openapi::ApiDoc;
 
@@ -68,11 +70,21 @@ pub fn create_router_with_config(config: &Config) -> Router {
         .on_response(DefaultOnResponse::new().include_headers(true));
 
     // Base router with common layers
-    let router = Router::new()
+    let mut router = Router::new()
         .route("/seal", post(seal_handler))
         .route("/verify", post(verify_handler))
         .route("/health", get(health))
-        .route("/ready", get(ready))
+        .route("/ready", get(ready));
+
+    // Add C2PA routes if feature enabled
+    #[cfg(feature = "c2pa")]
+    {
+        router = router
+            .route("/c2pa/embed", post(c2pa_embed_handler))
+            .route("/c2pa/verify", post(c2pa_verify_handler));
+    }
+
+    let router = router
         // OpenAPI documentation endpoints
         .merge(SwaggerUi::new("/docs").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .layer(cors)

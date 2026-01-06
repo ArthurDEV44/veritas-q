@@ -9,8 +9,12 @@ description = "Command-line interface for Veritas Q quantum-authenticated media 
 name = "veritas"
 path = "src/main.rs"
 
+[features]
+default = ["c2pa"]
+c2pa = ["veritas-core/c2pa"]
+
 [dependencies]
-veritas-core.workspace = true
+veritas-core = { workspace = true, features = ["c2pa"] }
 pqcrypto-mldsa.workspace = true
 pqcrypto-traits.workspace = true
 tokio.workspace = true

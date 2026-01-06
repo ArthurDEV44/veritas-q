@@ -41,6 +41,8 @@ pub enum ColorMode {
   veritas seal --mock image.jpg       Seal with mock entropy (testing)
   veritas verify image.jpg            Verify a sealed file
   veritas anchor image.jpg.veritas    Anchor seal to Solana
+  veritas c2pa embed -i image.jpg     Embed seal as C2PA manifest
+  veritas c2pa verify image_c2pa.jpg  Verify C2PA manifest
 
 Exit codes:
   0   Success
@@ -121,6 +123,63 @@ enum Commands {
         #[arg(short = 'n', long)]
         dry_run: bool,
     },
+
+    /// C2PA manifest operations (embed, extract, verify)
+    #[cfg(feature = "c2pa")]
+    C2pa {
+        #[command(subcommand)]
+        command: C2paCommands,
+    },
+}
+
+/// C2PA subcommands
+#[cfg(feature = "c2pa")]
+#[derive(Subcommand)]
+enum C2paCommands {
+    /// Embed Veritas seal as C2PA manifest in media file
+    Embed {
+        /// Input media file
+        #[arg(short, long, value_name = "FILE")]
+        input: PathBuf,
+
+        /// Output file (default: input with _c2pa suffix)
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+
+        /// Existing seal file (default: <INPUT>.veritas)
+        #[arg(short, long, value_name = "FILE")]
+        seal: Option<PathBuf>,
+
+        /// Path to ECDSA P-256 private key (PEM format)
+        #[arg(long, value_name = "FILE")]
+        key: Option<PathBuf>,
+
+        /// Path to X.509 certificate chain (PEM format)
+        #[arg(long, value_name = "FILE")]
+        cert: Option<PathBuf>,
+
+        /// Show what would be done without embedding
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+    },
+
+    /// Extract Veritas seal from C2PA manifest
+    Extract {
+        /// Media file with C2PA manifest
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+
+        /// Output seal file (default: <FILE>.veritas)
+        #[arg(short, long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
+
+    /// Verify C2PA manifest and embedded Veritas seal
+    Verify {
+        /// Media file to verify
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+    },
 }
 
 fn setup_logging(verbose: u8, quiet: bool, color: ColorMode) {
@@ -194,6 +253,24 @@ async fn main() -> ExitCode {
             update_seal,
             dry_run,
         } => commands::anchor::execute(seal, update_seal, dry_run, cli.quiet).await,
+        #[cfg(feature = "c2pa")]
+        Commands::C2pa { command } => match command {
+            C2paCommands::Embed {
+                input,
+                output,
+                seal,
+                key,
+                cert,
+                dry_run,
+            } => {
+                commands::c2pa::execute_embed(input, output, seal, key, cert, dry_run, cli.quiet)
+                    .await
+            }
+            C2paCommands::Extract { file, output } => {
+                commands::c2pa::execute_extract(file, output, cli.quiet).await
+            }
+            C2paCommands::Verify { file } => commands::c2pa::execute_verify(file, cli.quiet).await,
+        },
     };
 
     match result {

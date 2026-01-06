@@ -42,6 +42,9 @@ pub mod phash;
 pub mod qrng;
 pub mod seal;
 
+#[cfg(feature = "c2pa")]
+pub mod c2pa;
+
 // Re-export main types for convenience
 pub use error::{Result, VeritasError, CURRENT_SEAL_VERSION, MAX_SEAL_SIZE};
 pub use qrng::QrngSource;
