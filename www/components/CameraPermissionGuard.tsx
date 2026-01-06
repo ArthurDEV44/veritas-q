@@ -34,7 +34,7 @@ export default function CameraPermissionGuard({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
 
     async function checkPermission() {
       // Check if getUserMedia is supported

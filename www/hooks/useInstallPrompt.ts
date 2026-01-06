@@ -32,14 +32,18 @@ export function useInstallPrompt(): InstallPromptState {
     const userAgent = navigator.userAgent.toLowerCase();
     const iOS = /iphone|ipad|ipod/.test(userAgent) && !("MSStream" in window);
     const android = /android/.test(userAgent);
-    setIsIOS(iOS);
-    setIsAndroid(android);
 
     // Check if already installed (standalone mode)
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    setIsInstalled(isStandalone);
+
+    // Batch state updates in microtask to avoid synchronous setState in effect
+    queueMicrotask(() => {
+      setIsIOS(iOS);
+      setIsAndroid(android);
+      setIsInstalled(isStandalone);
+    });
 
     // Check if user dismissed recently
     const dismissedAt = localStorage.getItem(DISMISSED_KEY);

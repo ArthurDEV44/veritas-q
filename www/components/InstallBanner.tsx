@@ -11,7 +11,7 @@ export default function InstallBanner() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
 
   // Don't render on server or before hydration

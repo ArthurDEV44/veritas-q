@@ -32,7 +32,12 @@ export function useServiceWorker(): ServiceWorkerState & {
     if (typeof window === "undefined") return;
 
     const isSupported = "serviceWorker" in navigator;
-    setState((s) => ({ ...s, isSupported, isOffline: !navigator.onLine }));
+    const isOffline = !navigator.onLine;
+
+    // Defer state update to avoid synchronous setState in effect
+    queueMicrotask(() => {
+      setState((s) => ({ ...s, isSupported, isOffline }));
+    });
 
     if (!isSupported) return;
 
