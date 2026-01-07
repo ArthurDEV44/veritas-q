@@ -133,54 +133,83 @@ export default function CameraCapture() {
       }
 
       // Request camera with iOS-friendly constraints
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: 1920, max: 3840 },
-          height: { ideal: 1080, max: 2160 },
-        },
-        audio: false,
-      };
+      // iOS Safari is picky - use simpler constraints
+      const constraints: MediaStreamConstraints = isIOS()
+        ? {
+            video: {
+              facingMode: facingMode,
+            },
+            audio: false,
+          }
+        : {
+            video: {
+              facingMode: { ideal: facingMode },
+              width: { ideal: 1920, max: 3840 },
+              height: { ideal: 1080, max: 2160 },
+            },
+            audio: false,
+          };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        const video = videoRef.current;
         streamRef.current = stream;
+
+        // Log stream info for debugging
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          console.log("Camera track:", videoTrack.label, videoTrack.getSettings());
+        }
+
+        // Set srcObject
+        video.srcObject = stream;
 
         // Important for iOS: wait for video to be ready
         await new Promise<void>((resolve, reject) => {
-          const video = videoRef.current!;
-
           const onLoadedMetadata = () => {
-            video.removeEventListener("loadedmetadata", onLoadedMetadata);
-            video.removeEventListener("error", onError);
+            console.log("Video loadedmetadata:", video.videoWidth, "x", video.videoHeight);
+            cleanup();
             resolve();
           };
 
-          const onError = () => {
-            video.removeEventListener("loadedmetadata", onLoadedMetadata);
-            video.removeEventListener("error", onError);
+          const onCanPlay = () => {
+            console.log("Video canplay event");
+            cleanup();
+            resolve();
+          };
+
+          const onError = (e: Event) => {
+            console.error("Video error:", e);
+            cleanup();
             reject(new Error("Échec du chargement du flux vidéo"));
           };
 
+          const cleanup = () => {
+            video.removeEventListener("loadedmetadata", onLoadedMetadata);
+            video.removeEventListener("canplay", onCanPlay);
+            video.removeEventListener("error", onError);
+          };
+
           video.addEventListener("loadedmetadata", onLoadedMetadata);
+          video.addEventListener("canplay", onCanPlay);
           video.addEventListener("error", onError);
 
-          // Timeout for iOS
+          // Timeout for iOS - if nothing happens, try to proceed
           setTimeout(() => {
-            video.removeEventListener("loadedmetadata", onLoadedMetadata);
-            video.removeEventListener("error", onError);
-            resolve(); // Resolve anyway after timeout
-          }, 3000);
+            console.log("Video timeout - proceeding anyway. readyState:", video.readyState);
+            cleanup();
+            resolve();
+          }, 5000);
         });
 
         // Play the video (required for iOS)
         try {
-          await videoRef.current.play();
+          await video.play();
+          console.log("Video playing successfully");
         } catch (playError) {
-          // iOS may require user gesture, but autoplay with muted should work
           console.warn("Video play warning:", playError);
+          // On iOS, if autoplay fails, the video might still work
         }
 
         setState("streaming");
