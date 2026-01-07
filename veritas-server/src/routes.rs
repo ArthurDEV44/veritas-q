@@ -23,7 +23,8 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::config::Config;
 #[cfg(feature = "c2pa")]
 use crate::handlers::{c2pa_embed_handler, c2pa_verify_handler};
-use crate::handlers::{health, ready, seal_handler, verify_handler};
+use crate::handlers::{health, ready, resolve_handler, seal_handler, verify_handler, AppState};
+use crate::manifest_store::PostgresManifestStore;
 use crate::openapi::ApiDoc;
 use crate::webauthn::{
     finish_authentication, finish_registration, start_authentication, start_registration,
@@ -38,7 +39,7 @@ pub fn create_router() -> Router {
 
 /// Create the application router with in-memory WebAuthn storage (sync version for tests)
 pub fn create_router_with_config_sync(config: &Config) -> Router {
-    create_router_internal(config, WebAuthnStorage::in_memory())
+    create_router_internal(config, WebAuthnStorage::in_memory(), None)
 }
 
 /// Create the application router with custom configuration (async version)
@@ -51,11 +52,34 @@ pub async fn create_router_with_config(config: &Config) -> Router {
         );
         WebAuthnStorage::in_memory()
     });
-    create_router_internal(config, storage)
+
+    // Initialize manifest store if DATABASE_URL is set
+    let manifest_store = match std::env::var("DATABASE_URL") {
+        Ok(url) => match PostgresManifestStore::new(&url).await {
+            Ok(store) => {
+                tracing::info!("Manifest store initialized with PostgreSQL");
+                Some(Arc::new(store))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize manifest store: {}", e);
+                None
+            }
+        },
+        Err(_) => {
+            tracing::info!("DATABASE_URL not set, manifest store disabled");
+            None
+        }
+    };
+
+    create_router_internal(config, storage, manifest_store)
 }
 
 /// Internal router creation with provided storage
-fn create_router_internal(config: &Config, webauthn_storage: WebAuthnStorage) -> Router {
+fn create_router_internal(
+    config: &Config,
+    webauthn_storage: WebAuthnStorage,
+    manifest_store: Option<Arc<PostgresManifestStore>>,
+) -> Router {
     // Configure CORS based on allowed_origins
     let cors = match &config.allowed_origins {
         Some(origins) if !origins.is_empty() => {
@@ -115,9 +139,18 @@ fn create_router_internal(config: &Config, webauthn_storage: WebAuthnStorage) ->
         .route("/authenticate/finish", post(finish_authentication))
         .with_state(webauthn_state);
 
+    // Create app state for manifest store
+    let app_state = AppState { manifest_store };
+
+    // Routes that require app state (seal and resolve)
+    let stateful_router = Router::new()
+        .route("/seal", post(seal_handler))
+        .route("/resolve", post(resolve_handler))
+        .with_state(app_state);
+
     // Base router with common layers
     let mut router = Router::new()
-        .route("/seal", post(seal_handler))
+        .merge(stateful_router)
         .route("/verify", post(verify_handler))
         .route("/health", get(health))
         .route("/ready", get(ready))

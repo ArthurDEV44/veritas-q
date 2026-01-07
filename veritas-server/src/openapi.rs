@@ -4,7 +4,10 @@
 
 use utoipa::OpenApi;
 
-use crate::handlers::{HealthResponse, ReadyResponse, SealResponse, VerifyResponse};
+use crate::handlers::{
+    HealthResponse, ReadyResponse, ResolveMatch, ResolveRequest, ResolveResponse, SealResponse,
+    VerifyResponse,
+};
 use crate::webauthn::{
     AttestationFormat, AuthenticatorType, DeviceAttestation, DeviceAttestationResponse,
     DeviceModel, StartAuthenticationRequest, StartRegistrationRequest,
@@ -57,6 +60,7 @@ Veritas Q provides **unforgeable digital seals** for media content using:
     ),
     tags(
         (name = "Sealing", description = "Create quantum-authenticated seals for media content"),
+        (name = "Resolution", description = "Resolve seals by perceptual hash similarity (soft binding)"),
         (name = "Verification", description = "Verify seals against content to detect tampering"),
         (name = "WebAuthn", description = "Device attestation via WebAuthn/FIDO2 for hardware-backed authentication"),
         (name = "C2PA", description = "C2PA manifest operations for Content Authenticity Initiative compatibility"),
@@ -66,6 +70,7 @@ Veritas Q provides **unforgeable digital seals** for media content using:
         crate::handlers::health::health,
         crate::handlers::health::ready,
         crate::handlers::seal::seal_handler,
+        crate::handlers::resolve::resolve_handler,
         crate::handlers::verify::verify_handler,
         crate::webauthn::handlers::start_registration,
         crate::webauthn::handlers::finish_registration,
@@ -77,6 +82,9 @@ Veritas Q provides **unforgeable digital seals** for media content using:
             HealthResponse,
             ReadyResponse,
             SealResponse,
+            ResolveRequest,
+            ResolveResponse,
+            ResolveMatch,
             VerifyResponse,
             StartRegistrationRequest,
             StartAuthenticationRequest,

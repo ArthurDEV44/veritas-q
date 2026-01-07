@@ -6,6 +6,7 @@
 pub mod config;
 pub mod error;
 pub mod handlers;
+pub mod manifest_store;
 pub mod openapi;
 pub mod routes;
 pub mod validation;
@@ -13,6 +14,9 @@ pub mod webauthn;
 
 pub use config::Config;
 pub use error::ApiError;
+pub use manifest_store::{
+    ManifestInput, ManifestRecord, ManifestStoreError, PostgresManifestStore, SimilarityMatch,
+};
 pub use openapi::ApiDoc;
 pub use routes::{create_router, create_router_with_config, create_router_with_config_sync};
 pub use webauthn::{DeviceAttestation, StorageError, WebAuthnConfig, WebAuthnStorage};

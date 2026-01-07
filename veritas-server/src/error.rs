@@ -24,6 +24,10 @@ pub enum ApiError {
     #[error("Internal error: {0}")]
     Internal(String),
 
+    /// Service unavailable - required service is not configured or available
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
     /// Veritas core error - error from the cryptographic library
     #[error("Veritas error: {0}")]
     Veritas(#[from] veritas_core::VeritasError),
@@ -45,12 +49,18 @@ impl ApiError {
         Self::Timeout(message.into())
     }
 
+    /// Create a service unavailable error
+    pub fn service_unavailable(message: impl Into<String>) -> Self {
+        Self::ServiceUnavailable(message.into())
+    }
+
     /// Get the HTTP status code for this error
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Timeout(_) => StatusCode::REQUEST_TIMEOUT,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Veritas(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -61,6 +71,7 @@ impl ApiError {
             Self::BadRequest(_) => "bad_request",
             Self::Timeout(_) => "timeout",
             Self::Internal(_) => "internal",
+            Self::ServiceUnavailable(_) => "service_unavailable",
             Self::Veritas(_) => "veritas",
         }
     }
@@ -80,6 +91,14 @@ impl IntoResponse for ApiError {
                     category = category,
                     error = %message,
                     "Client error"
+                );
+            }
+            Self::ServiceUnavailable(_) => {
+                tracing::warn!(
+                    status = %status,
+                    category = category,
+                    error = %message,
+                    "Service unavailable"
                 );
             }
             Self::Timeout(_) | Self::Internal(_) | Self::Veritas(_) => {

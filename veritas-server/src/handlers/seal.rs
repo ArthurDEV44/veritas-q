@@ -2,13 +2,18 @@
 //!
 //! Handles POST /seal requests to create quantum-authenticated seals for media content.
 
-use axum::{extract::Multipart, Json};
+use axum::{
+    extract::{Multipart, State},
+    Json,
+};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
 use utoipa::ToSchema;
 use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder};
 
 use crate::error::ApiError;
+use crate::handlers::resolve::AppState;
+use crate::manifest_store::ManifestInput;
 use crate::validation::{validate_content_type, validate_file_size, DEFAULT_MAX_FILE_SIZE};
 use crate::webauthn::DeviceAttestation;
 
@@ -66,7 +71,10 @@ const MAX_ATTESTATION_AGE_SECS: u64 = 300;
         (status = 500, description = "Internal server error")
     )
 )]
-pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>, ApiError> {
+pub async fn seal_handler(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<SealResponse>, ApiError> {
     let mut file_data: Option<Vec<u8>> = None;
     let mut media_type = MediaType::Image;
     let mut use_mock = false;
@@ -189,7 +197,30 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
     let has_device_attestation = device_attestation.is_some();
 
     // Extract perceptual hash for soft binding (images only)
-    let perceptual_hash = seal.content_hash.perceptual_hash.as_ref().map(hex::encode);
+    let perceptual_hash = seal.content_hash.perceptual_hash.clone();
+    let perceptual_hash_hex = perceptual_hash.as_ref().map(hex::encode);
+
+    // Store manifest in database if manifest store is configured
+    if let Some(ref store) = state.manifest_store {
+        let input = ManifestInput {
+            seal_id: seal_id.clone(),
+            perceptual_hash,
+            image_hash: hex::encode(seal.content_hash.crypto_hash),
+            seal_cbor: seal_cbor.clone(),
+            media_type: format!("{:?}", media_type).to_lowercase(),
+        };
+
+        if let Err(e) = store.store(&input).await {
+            // Log error but don't fail the request - sealing succeeded
+            tracing::warn!(
+                seal_id = %seal_id,
+                error = %e,
+                "Failed to store manifest in database"
+            );
+        } else {
+            tracing::debug!(seal_id = %seal_id, "Manifest stored in database");
+        }
+    }
 
     // Note: In a full implementation, we would embed the device_attestation
     // into the VeritasSeal structure. For now, it's validated and logged
@@ -200,6 +231,6 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
         seal_data,
         timestamp: seal.capture_timestamp_utc,
         has_device_attestation,
-        perceptual_hash,
+        perceptual_hash: perceptual_hash_hex,
     }))
 }
