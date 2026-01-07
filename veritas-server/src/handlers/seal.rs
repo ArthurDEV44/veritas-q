@@ -13,7 +13,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use veritas_core::{
     c2pa::{VeritasManifestBuilder, VeritasSigner},
-    generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder,
+    generate_keypair, LfdQrng, MediaType, MockQrng, SealBuilder,
 };
 
 use crate::error::ApiError;
@@ -189,8 +189,8 @@ pub async fn seal_handler(
             .build_secure(&qrng, &secret_key, &public_key)
             .await?
     } else {
-        // Try ANU QRNG first, fall back to mock if unavailable
-        match AnuQrng::new() {
+        // Try LfD QRNG first, fall back to mock if unavailable
+        match LfdQrng::new() {
             Ok(qrng) => {
                 match SealBuilder::new(content.clone(), media_type)
                     .build_secure(&qrng, &secret_key, &public_key)
@@ -198,7 +198,7 @@ pub async fn seal_handler(
                 {
                     Ok(seal) => seal,
                     Err(e) => {
-                        tracing::warn!("ANU QRNG failed: {}, falling back to mock entropy", e);
+                        tracing::warn!("LfD QRNG failed: {}, falling back to mock entropy", e);
                         let mock_qrng = MockQrng::default();
                         SealBuilder::new(content, media_type)
                             .build_secure(&mock_qrng, &secret_key, &public_key)
@@ -207,7 +207,7 @@ pub async fn seal_handler(
                 }
             }
             Err(e) => {
-                tracing::warn!("ANU QRNG client creation failed: {}, using mock entropy", e);
+                tracing::warn!("LfD QRNG client creation failed: {}, using mock entropy", e);
                 let mock_qrng = MockQrng::default();
                 SealBuilder::new(content, media_type)
                     .build_secure(&mock_qrng, &secret_key, &public_key)

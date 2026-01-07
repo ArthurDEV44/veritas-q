@@ -60,7 +60,7 @@ pub use seal::SealBuilder;
 
 // Network-dependent exports (not available in Wasm)
 #[cfg(feature = "network")]
-pub use qrng::{AnuQrng, MockQrng, QuantumEntropySource};
+pub use qrng::{AnuQrng, LfdQrng, MockQrng, QuantumEntropySource};
 
 // Perceptual hashing exports (soft binding)
 #[cfg(feature = "perceptual-hash")]

@@ -32,12 +32,16 @@
 #[cfg(feature = "network")]
 mod anu;
 #[cfg(feature = "network")]
+mod lfd;
+#[cfg(feature = "network")]
 mod mock;
 #[cfg(feature = "network")]
 mod provider;
 
 #[cfg(feature = "network")]
 pub use anu::{AnuQrng, AnuQrngConfig};
+#[cfg(feature = "network")]
+pub use lfd::{LfdQrng, LfdQrngConfig};
 #[cfg(feature = "network")]
 pub use mock::MockQrng;
 #[cfg(feature = "network")]
@@ -93,8 +97,10 @@ pub trait QuantumEntropySource: Send + Sync {
 pub enum QrngSource {
     /// ID Quantique cloud API (production)
     IdQuantiqueCloud,
-    /// Australian National University QRNG API (development)
+    /// Australian National University QRNG API (deprecated - SSL expired)
     AnuCloud,
+    /// LfD QRNG API (Germany, backed by ID Quantique hardware)
+    LfdCloud,
     /// Device-embedded QRNG hardware (e.g., Samsung Quantum chip)
     DeviceHardware { device_id: String },
     /// Mock source for testing only (NOT quantum-safe!)
@@ -106,6 +112,7 @@ impl std::fmt::Display for QrngSource {
         match self {
             Self::IdQuantiqueCloud => write!(f, "ID Quantique Cloud"),
             Self::AnuCloud => write!(f, "ANU QRNG"),
+            Self::LfdCloud => write!(f, "LfD QRNG (Germany)"),
             Self::DeviceHardware { device_id } => write!(f, "Hardware: {device_id}"),
             Self::Mock => write!(f, "Mock (NOT QUANTUM-SAFE)"),
         }

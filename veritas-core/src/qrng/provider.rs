@@ -16,14 +16,17 @@
 
 use std::sync::Arc;
 
-use super::{AnuQrng, AnuQrngConfig, MockQrng, QrngSource, QuantumEntropySource};
+use super::{AnuQrng, AnuQrngConfig, LfdQrng, LfdQrngConfig, MockQrng, QrngSource, QuantumEntropySource};
 use crate::error::{Result, VeritasError};
 
 /// Configuration for creating QRNG providers.
 #[derive(Debug, Clone, Default)]
 pub enum QrngProviderConfig {
-    /// ANU QRNG (development/testing)
+    /// ANU QRNG (deprecated - SSL certificate expired)
     Anu(AnuQrngConfig),
+
+    /// LfD QRNG (Germany, backed by ID Quantique hardware)
+    Lfd(LfdQrngConfig),
 
     /// ID Quantique (production)
     IdQuantique(IdQuantiqueConfig),
@@ -120,6 +123,10 @@ impl QrngProviderFactory {
                 let provider = AnuQrng::with_config(anu_config)?;
                 Ok(Arc::new(provider))
             }
+            QrngProviderConfig::Lfd(lfd_config) => {
+                let provider = LfdQrng::with_config(lfd_config)?;
+                Ok(Arc::new(provider))
+            }
             QrngProviderConfig::IdQuantique(idq_config) => {
                 let provider = IdQuantiqueQrng::new(idq_config)?;
                 Ok(Arc::new(provider))
@@ -136,7 +143,7 @@ impl QrngProviderFactory {
     ///
     /// Priority:
     /// 1. ID Quantique (if QRNG_API_KEY is set)
-    /// 2. ANU QRNG (fallback for development)
+    /// 2. LfD QRNG (Germany, free, backed by ID Quantique hardware)
     fn create_auto() -> Result<Arc<dyn QuantumEntropySource>> {
         // Try ID Quantique first (production)
         if let Ok(idq_config) = IdQuantiqueConfig::from_env() {
@@ -144,9 +151,9 @@ impl QrngProviderFactory {
             return Self::create(QrngProviderConfig::IdQuantique(idq_config));
         }
 
-        // Fall back to ANU (development)
-        tracing::info!("Auto-selected ANU QRNG provider (development mode)");
-        Self::create(QrngProviderConfig::Anu(AnuQrngConfig::default()))
+        // Fall back to LfD (Germany, free)
+        tracing::info!("Auto-selected LfD QRNG provider (Germany)");
+        Self::create(QrngProviderConfig::Lfd(LfdQrngConfig::default()))
     }
 
     /// Create a mock provider for testing.
@@ -490,6 +497,13 @@ mod tests {
         let config = QrngProviderConfig::Anu(AnuQrngConfig::default());
         let provider = QrngProviderFactory::create(config).unwrap();
         assert_eq!(provider.source_id(), QrngSource::AnuCloud);
+    }
+
+    #[test]
+    fn test_create_lfd_provider() {
+        let config = QrngProviderConfig::Lfd(LfdQrngConfig::default());
+        let provider = QrngProviderFactory::create(config).unwrap();
+        assert_eq!(provider.source_id(), QrngSource::LfdCloud);
     }
 
     #[tokio::test]

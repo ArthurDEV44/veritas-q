@@ -118,6 +118,7 @@ fn qrng_source_to_string(source: &QrngSource) -> String {
     match source {
         QrngSource::Mock => "MOCK".to_string(),
         QrngSource::AnuCloud => "ANU_CLOUD".to_string(),
+        QrngSource::LfdCloud => "LFD_CLOUD".to_string(),
         QrngSource::IdQuantiqueCloud => "ID_QUANTIQUE_CLOUD".to_string(),
         QrngSource::DeviceHardware { device_id } => format!("DEVICE_HARDWARE:{}", device_id),
     }

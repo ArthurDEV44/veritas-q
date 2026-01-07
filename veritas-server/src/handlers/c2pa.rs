@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 use veritas_core::c2pa::{
     extract_quantum_seal_from_stream, QuantumSealAssertion, VeritasManifestBuilder, VeritasSigner,
 };
-use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder, VeritasSeal};
+use veritas_core::{generate_keypair, LfdQrng, MediaType, MockQrng, SealBuilder, VeritasSeal};
 
 use crate::error::ApiError;
 use crate::validation::{validate_file_size, DEFAULT_MAX_FILE_SIZE};
@@ -184,7 +184,7 @@ pub async fn c2pa_embed_handler(
                 .build_secure(&qrng, &secret_key, &public_key)
                 .await?
         } else {
-            match AnuQrng::new() {
+            match LfdQrng::new() {
                 Ok(qrng) => {
                     match SealBuilder::new(content.clone(), media_type)
                         .build_secure(&qrng, &secret_key, &public_key)
