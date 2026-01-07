@@ -49,13 +49,40 @@ impl VeritasSigner {
 
     /// Create a signer from environment variables.
     ///
-    /// Reads `C2PA_SIGNING_KEY` and `C2PA_SIGNING_CERT` environment variables
-    /// which should contain paths to the PEM files.
+    /// Supports two modes:
+    ///
+    /// 1. **File paths** (for local development):
+    ///    - `C2PA_SIGNING_KEY` - Path to PEM-encoded private key file
+    ///    - `C2PA_SIGNING_CERT` - Path to PEM-encoded certificate file
+    ///
+    /// 2. **Base64-encoded PEM content** (for cloud deployments like Render):
+    ///    - `C2PA_SIGNING_KEY_PEM` - Base64-encoded PEM private key content
+    ///    - `C2PA_SIGNING_CERT_PEM` - Base64-encoded PEM certificate content
+    ///
+    /// The base64 variants take precedence if both are set.
     pub fn from_env() -> C2paResult<Self> {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+
+        // Try base64-encoded PEM content first (for cloud deployments)
+        if let (Ok(key_b64), Ok(cert_b64)) = (
+            std::env::var("C2PA_SIGNING_KEY_PEM"),
+            std::env::var("C2PA_SIGNING_CERT_PEM"),
+        ) {
+            let key_pem = STANDARD
+                .decode(&key_b64)
+                .map_err(|e| C2paError::InvalidCertificate(format!("Invalid base64 key: {}", e)))?;
+            let cert_pem = STANDARD
+                .decode(&cert_b64)
+                .map_err(|e| C2paError::InvalidCertificate(format!("Invalid base64 cert: {}", e)))?;
+
+            return Self::from_pem(&key_pem, &cert_pem);
+        }
+
+        // Fall back to file paths (for local development)
         let key_path = std::env::var("C2PA_SIGNING_KEY")
-            .map_err(|_| C2paError::MissingEnvVar("C2PA_SIGNING_KEY"))?;
+            .map_err(|_| C2paError::MissingEnvVar("C2PA_SIGNING_KEY or C2PA_SIGNING_KEY_PEM"))?;
         let cert_path = std::env::var("C2PA_SIGNING_CERT")
-            .map_err(|_| C2paError::MissingEnvVar("C2PA_SIGNING_CERT"))?;
+            .map_err(|_| C2paError::MissingEnvVar("C2PA_SIGNING_CERT or C2PA_SIGNING_CERT_PEM"))?;
 
         let key_pem = std::fs::read(&key_path)?;
         let cert_pem = std::fs::read(&cert_path)?;
