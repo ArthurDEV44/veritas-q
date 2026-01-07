@@ -150,7 +150,9 @@ export default function CameraCapture() {
             audio: false,
           };
 
+      console.log("Requesting camera with constraints:", JSON.stringify(constraints));
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("Got media stream:", stream.id);
 
       if (videoRef.current) {
         const video = videoRef.current;
@@ -159,60 +161,104 @@ export default function CameraCapture() {
         // Log stream info for debugging
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
-          console.log("Camera track:", videoTrack.label, videoTrack.getSettings());
+          console.log("Camera track:", videoTrack.label);
+          console.log("Track settings:", JSON.stringify(videoTrack.getSettings()));
+          console.log("Track state:", videoTrack.readyState, "enabled:", videoTrack.enabled);
         }
+
+        // iOS Safari specific: ensure video element is ready
+        video.setAttribute("autoplay", "");
+        video.setAttribute("playsinline", "");
+        video.setAttribute("muted", "");
+        video.muted = true;
 
         // Set srcObject
         video.srcObject = stream;
+        console.log("Set video.srcObject, readyState:", video.readyState);
 
-        // Important for iOS: wait for video to be ready
-        await new Promise<void>((resolve, reject) => {
-          const onLoadedMetadata = () => {
-            console.log("Video loadedmetadata:", video.videoWidth, "x", video.videoHeight);
-            cleanup();
-            resolve();
-          };
+        // For iOS: try to play immediately without waiting for events
+        if (isIOS()) {
+          console.log("iOS detected - using direct play approach");
 
-          const onCanPlay = () => {
-            console.log("Video canplay event");
-            cleanup();
-            resolve();
-          };
+          // Small delay to let iOS process the stream
+          await new Promise(resolve => setTimeout(resolve, 100));
 
-          const onError = (e: Event) => {
-            console.error("Video error:", e);
-            cleanup();
-            reject(new Error("Échec du chargement du flux vidéo"));
-          };
+          try {
+            await video.play();
+            console.log("iOS video.play() succeeded, readyState:", video.readyState);
+          } catch (playError) {
+            console.warn("iOS video.play() failed:", playError);
+          }
 
-          const cleanup = () => {
-            video.removeEventListener("loadedmetadata", onLoadedMetadata);
-            video.removeEventListener("canplay", onCanPlay);
-            video.removeEventListener("error", onError);
-          };
+          // Check if video is actually playing
+          if (video.readyState >= 2) {
+            console.log("Video ready, dimensions:", video.videoWidth, "x", video.videoHeight);
+            setState("streaming");
+            return;
+          }
 
-          video.addEventListener("loadedmetadata", onLoadedMetadata);
-          video.addEventListener("canplay", onCanPlay);
-          video.addEventListener("error", onError);
+          // Wait a bit more for iOS
+          await new Promise(resolve => setTimeout(resolve, 500));
 
-          // Timeout for iOS - if nothing happens, try to proceed
-          setTimeout(() => {
-            console.log("Video timeout - proceeding anyway. readyState:", video.readyState);
-            cleanup();
-            resolve();
-          }, 5000);
-        });
+          if (video.readyState >= 1) {
+            console.log("Video loading, proceeding to streaming state");
+            setState("streaming");
+            return;
+          }
 
-        // Play the video (required for iOS)
-        try {
-          await video.play();
-          console.log("Video playing successfully");
-        } catch (playError) {
-          console.warn("Video play warning:", playError);
-          // On iOS, if autoplay fails, the video might still work
+          // Last resort: proceed anyway after 2 seconds
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log("iOS fallback: proceeding with readyState:", video.readyState);
+          setState("streaming");
+        } else {
+          // Non-iOS: wait for proper events
+          await new Promise<void>((resolve, reject) => {
+            const onLoadedMetadata = () => {
+              console.log("Video loadedmetadata:", video.videoWidth, "x", video.videoHeight);
+              cleanup();
+              resolve();
+            };
+
+            const onCanPlay = () => {
+              console.log("Video canplay event");
+              cleanup();
+              resolve();
+            };
+
+            const onError = (e: Event) => {
+              console.error("Video error:", e);
+              cleanup();
+              reject(new Error("Échec du chargement du flux vidéo"));
+            };
+
+            const cleanup = () => {
+              video.removeEventListener("loadedmetadata", onLoadedMetadata);
+              video.removeEventListener("canplay", onCanPlay);
+              video.removeEventListener("error", onError);
+            };
+
+            video.addEventListener("loadedmetadata", onLoadedMetadata);
+            video.addEventListener("canplay", onCanPlay);
+            video.addEventListener("error", onError);
+
+            // Timeout fallback
+            setTimeout(() => {
+              console.log("Video timeout - proceeding anyway. readyState:", video.readyState);
+              cleanup();
+              resolve();
+            }, 5000);
+          });
+
+          // Play the video
+          try {
+            await video.play();
+            console.log("Video playing successfully");
+          } catch (playError) {
+            console.warn("Video play warning:", playError);
+          }
+
+          setState("streaming");
         }
-
-        setState("streaming");
       }
     } catch (err) {
       stopCamera();
