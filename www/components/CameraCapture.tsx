@@ -11,6 +11,7 @@ import {
   SwitchCamera,
   WifiOff,
   ShieldCheck,
+  Download,
 } from "lucide-react";
 import { useServiceWorker } from "@/hooks/useServiceWorker";
 import { useDeviceAttestation } from "@/hooks/useDeviceAttestation";
@@ -78,6 +79,7 @@ export default function CameraCapture() {
   const [state, setState] = useState<CaptureState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [sealData, setSealData] = useState<SealResponse | null>(null);
+  const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">(
     "environment"
   );
@@ -360,6 +362,11 @@ export default function CameraCapture() {
 
       const data: SealResponse = await response.json();
       setSealData(data);
+
+      // Create a URL for the captured image so user can download it
+      const imageUrl = URL.createObjectURL(blob);
+      setCapturedImageUrl(imageUrl);
+
       setState("success");
       stopCamera();
     } catch (err) {
@@ -375,9 +382,25 @@ export default function CameraCapture() {
   const reset = useCallback(() => {
     stopCamera();
     setSealData(null);
+    // Clean up the image URL to avoid memory leaks
+    if (capturedImageUrl) {
+      URL.revokeObjectURL(capturedImageUrl);
+      setCapturedImageUrl(null);
+    }
     setErrorMessage("");
     setState("idle");
-  }, [stopCamera]);
+  }, [stopCamera, capturedImageUrl]);
+
+  const downloadImage = useCallback(() => {
+    if (!capturedImageUrl || !sealData) return;
+
+    const link = document.createElement("a");
+    link.href = capturedImageUrl;
+    link.download = `veritas-seal-${sealData.seal_id.slice(0, 8)}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [capturedImageUrl, sealData]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -546,6 +569,18 @@ export default function CameraCapture() {
                       <span className="text-xs text-foreground/40">Sans attestation d&apos;appareil</span>
                     )}
                   </div>
+
+                  {/* Download button */}
+                  {capturedImageUrl && (
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={downloadImage}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-quantum text-black font-semibold rounded-lg hover:bg-quantum-dim transition-colors"
+                    >
+                      <Download className="w-5 h-5" />
+                      <span>Télécharger l&apos;image</span>
+                    </motion.button>
+                  )}
                 </div>
               )}
             </motion.div>
