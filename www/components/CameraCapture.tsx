@@ -33,6 +33,11 @@ interface SealResponse {
   seal_data: string;
   timestamp: number;
   has_device_attestation: boolean;
+  perceptual_hash?: string;
+  /** Base64-encoded image with embedded C2PA manifest */
+  sealed_image?: string;
+  /** Size of the C2PA manifest in bytes */
+  manifest_size?: number;
 }
 
 // Detect iOS for specific handling
@@ -392,14 +397,37 @@ export default function CameraCapture() {
   }, [stopCamera, capturedImageUrl]);
 
   const downloadImage = useCallback(() => {
-    if (!capturedImageUrl || !sealData) return;
+    if (!sealData) return;
+
+    let blobUrl: string;
+
+    if (sealData.sealed_image) {
+      // Image with embedded C2PA manifest (preferred)
+      const byteString = atob(sealData.sealed_image);
+      const bytes = new Uint8Array(byteString.length);
+      for (let i = 0; i < byteString.length; i++) {
+        bytes[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: "image/jpeg" });
+      blobUrl = URL.createObjectURL(blob);
+    } else if (capturedImageUrl) {
+      // Fallback: original image without C2PA manifest
+      blobUrl = capturedImageUrl;
+    } else {
+      return;
+    }
 
     const link = document.createElement("a");
-    link.href = capturedImageUrl;
+    link.href = blobUrl;
     link.download = `veritas-seal-${sealData.seal_id.slice(0, 8)}.jpg`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    // Clean up blob URL if we created one for sealed_image
+    if (sealData.sealed_image) {
+      URL.revokeObjectURL(blobUrl);
+    }
   }, [capturedImageUrl, sealData]);
 
   // Cleanup on unmount
@@ -570,15 +598,34 @@ export default function CameraCapture() {
                     )}
                   </div>
 
+                  {/* C2PA manifest indicator */}
+                  {sealData.sealed_image && (
+                    <div className="rounded-lg p-3 bg-quantum/10 border border-quantum/30 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-quantum" />
+                      <span className="text-sm text-quantum">
+                        Manifest C2PA integre
+                        {sealData.manifest_size && (
+                          <span className="text-quantum/60 ml-1">
+                            ({Math.round(sealData.manifest_size / 1024)} Ko)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Download button */}
-                  {capturedImageUrl && (
+                  {(capturedImageUrl || sealData.sealed_image) && (
                     <motion.button
                       whileTap={{ scale: 0.95 }}
                       onClick={downloadImage}
                       className="w-full flex items-center justify-center gap-2 py-3 bg-quantum text-black font-semibold rounded-lg hover:bg-quantum-dim transition-colors"
                     >
                       <Download className="w-5 h-5" />
-                      <span>Télécharger l&apos;image</span>
+                      <span>
+                        {sealData.sealed_image
+                          ? "Telecharger (avec C2PA)"
+                          : "Telecharger l'image"}
+                      </span>
                     </motion.button>
                   )}
                 </div>

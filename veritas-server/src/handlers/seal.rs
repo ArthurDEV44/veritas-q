@@ -2,6 +2,8 @@
 //!
 //! Handles POST /seal requests to create quantum-authenticated seals for media content.
 
+use std::io::Cursor;
+
 use axum::{
     extract::{Multipart, State},
     Json,
@@ -9,7 +11,10 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
 use utoipa::ToSchema;
-use veritas_core::{generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder};
+use veritas_core::{
+    c2pa::{VeritasManifestBuilder, VeritasSigner},
+    generate_keypair, AnuQrng, MediaType, MockQrng, SealBuilder,
+};
 
 use crate::error::ApiError;
 use crate::handlers::resolve::AppState;
@@ -37,6 +42,13 @@ pub struct SealResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "a1b2c3d4e5f67890")]
     pub perceptual_hash: Option<String>,
+    /// Base64-encoded image with embedded C2PA manifest (when embed_c2pa=true)
+    /// Contains the original image plus the Veritas quantum seal as a C2PA assertion
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sealed_image: Option<String>,
+    /// Size of the C2PA manifest in bytes (when embed_c2pa=true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_size: Option<usize>,
 }
 
 /// Maximum age for device attestation to be considered fresh (5 minutes)
@@ -49,6 +61,7 @@ const MAX_ATTESTATION_AGE_SECS: u64 = 300;
 /// - **media_type** (optional): "image", "video", "audio", or "generic" (default: "image")
 /// - **mock** (optional): "true" to use mock QRNG instead of ANU (for testing only)
 /// - **device_attestation** (optional): JSON-encoded WebAuthn device attestation
+/// - **embed_c2pa** (optional): "true" (default) to embed C2PA manifest in response, "false" to skip
 ///
 /// The seal contains:
 /// - QRNG entropy (256 bits from quantum random number generator)
@@ -76,8 +89,10 @@ pub async fn seal_handler(
     mut multipart: Multipart,
 ) -> Result<Json<SealResponse>, ApiError> {
     let mut file_data: Option<Vec<u8>> = None;
+    let mut content_type_hint: Option<String> = None;
     let mut media_type = MediaType::Image;
     let mut use_mock = false;
+    let mut embed_c2pa = true; // Default: embed C2PA manifest
     let mut device_attestation: Option<DeviceAttestation> = None;
 
     // Parse multipart form
@@ -90,9 +105,10 @@ pub async fn seal_handler(
 
         match name.as_str() {
             "file" => {
-                // Validate Content-Type
+                // Validate Content-Type and store for C2PA embedding
                 let content_type = field.content_type().map(|s| s.to_string());
                 validate_content_type(content_type.as_deref())?;
+                content_type_hint = content_type;
 
                 // Read file data
                 let data = field
@@ -117,6 +133,10 @@ pub async fn seal_handler(
             "mock" => {
                 let value = field.text().await.unwrap_or_default();
                 use_mock = value.to_lowercase() == "true";
+            }
+            "embed_c2pa" => {
+                let value = field.text().await.unwrap_or_default();
+                embed_c2pa = value.to_lowercase() != "false"; // Default true unless explicitly false
             }
             "device_attestation" => {
                 let json = field.text().await.unwrap_or_default();
@@ -150,6 +170,13 @@ pub async fn seal_handler(
     let content = file_data.ok_or_else(|| {
         ApiError::bad_request("No file provided. Use 'file' field in multipart form.")
     })?;
+
+    // Clone content for C2PA embedding (before seal creation which may consume it)
+    let content_for_c2pa = if embed_c2pa {
+        Some(content.clone())
+    } else {
+        None
+    };
 
     // Generate keypair for this seal (in production, use persistent keys from TEE)
     // Uses ZeroizingSecretKey for secure memory handling
@@ -226,11 +253,61 @@ pub async fn seal_handler(
     // into the VeritasSeal structure. For now, it's validated and logged
     // to demonstrate the WebAuthn integration flow.
 
+    // Embed C2PA manifest if requested and signing credentials are available
+    let (sealed_image, manifest_size) = if let Some(original_content) = content_for_c2pa {
+        // Determine MIME type for C2PA embedding
+        let mime_type = content_type_hint.as_deref().unwrap_or(match media_type {
+            MediaType::Image => "image/jpeg",
+            MediaType::Video => "video/mp4",
+            MediaType::Audio => "audio/mpeg",
+        });
+
+        match VeritasSigner::from_env() {
+            Ok(signer) => {
+                let builder = VeritasManifestBuilder::new(seal.clone());
+                let mut input = Cursor::new(original_content.clone());
+                let mut output = Cursor::new(Vec::new());
+
+                match builder.embed_in_stream(mime_type, &mut input, &mut output, signer) {
+                    Ok(()) => {
+                        let embedded = output.into_inner();
+                        let size = embedded.len().saturating_sub(original_content.len());
+                        tracing::debug!(
+                            seal_id = %seal_id,
+                            manifest_size = size,
+                            "C2PA manifest embedded successfully"
+                        );
+                        (Some(BASE64.encode(&embedded)), Some(size))
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            seal_id = %seal_id,
+                            error = %e,
+                            "Failed to embed C2PA manifest, returning seal without embedded image"
+                        );
+                        (None, None)
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::debug!(
+                    error = %e,
+                    "C2PA signing credentials not available, skipping manifest embedding"
+                );
+                (None, None)
+            }
+        }
+    } else {
+        (None, None)
+    };
+
     Ok(Json(SealResponse {
         seal_id,
         seal_data,
         timestamp: seal.capture_timestamp_utc,
         has_device_attestation,
         perceptual_hash: perceptual_hash_hex,
+        sealed_image,
+        manifest_size,
     }))
 }
