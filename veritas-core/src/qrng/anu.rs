@@ -24,16 +24,19 @@ use crate::error::{Result, VeritasError};
 const DEFAULT_API_URL: &str = "https://qrng.anu.edu.au/API/jsonI.php?length=1&type=hex16&size=32";
 
 /// Default timeout for API requests.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Note: Reduced from 10s to 5s because ANU's SSL certificate has expired,
+/// causing long delays before fallback to mock entropy.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Maximum number of retry attempts.
-const MAX_RETRIES: u32 = 3;
+/// Note: Reduced from 3 to 1 to fail fast when ANU API is unavailable.
+const MAX_RETRIES: u32 = 1;
 
 /// Initial retry interval.
 const INITIAL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Maximum retry interval.
-const MAX_INTERVAL: Duration = Duration::from_secs(2);
+const MAX_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Response structure from ANU QRNG API.
 #[derive(Debug, Deserialize)]
