@@ -238,7 +238,7 @@ export default function DeviceAttestationBadge({
             exit={{ opacity: 0, y: -10 }}
             className="absolute top-full left-0 right-0 mt-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2 z-20"
           >
-            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
             <p className="text-xs text-red-500">{error}</p>
           </motion.div>
         )}

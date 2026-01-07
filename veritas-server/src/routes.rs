@@ -44,12 +44,13 @@ pub fn create_router_with_config_sync(config: &Config) -> Router {
 /// Create the application router with custom configuration (async version)
 /// Uses PostgreSQL storage if DATABASE_URL is set.
 pub async fn create_router_with_config(config: &Config) -> Router {
-    let storage = WebAuthnStorage::from_env()
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to initialize WebAuthn storage: {}, using in-memory", e);
-            WebAuthnStorage::in_memory()
-        });
+    let storage = WebAuthnStorage::from_env().await.unwrap_or_else(|e| {
+        tracing::warn!(
+            "Failed to initialize WebAuthn storage: {}, using in-memory",
+            e
+        );
+        WebAuthnStorage::in_memory()
+    });
     create_router_internal(config, storage)
 }
 
@@ -98,8 +99,8 @@ fn create_router_internal(config: &Config, webauthn_storage: WebAuthnStorage) ->
         .on_response(DefaultOnResponse::new().include_headers(true));
 
     // Initialize WebAuthn state with provided storage
-    let webauthn_config = crate::webauthn::WebAuthnConfig::from_env()
-        .expect("WebAuthn config must be valid");
+    let webauthn_config =
+        crate::webauthn::WebAuthnConfig::from_env().expect("WebAuthn config must be valid");
 
     let webauthn_state = Arc::new(WebAuthnState {
         config: webauthn_config,

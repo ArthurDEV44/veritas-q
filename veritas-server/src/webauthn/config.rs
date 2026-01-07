@@ -82,8 +82,7 @@ impl WebAuthnConfig {
         let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| "localhost".to_string());
         let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN")
             .unwrap_or_else(|_| "http://localhost:3001".to_string());
-        let rp_name =
-            std::env::var("WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Veritas Q".to_string());
+        let rp_name = std::env::var("WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Veritas Q".to_string());
 
         let origin =
             Url::parse(&rp_origin).map_err(|e| ConfigError::InvalidOrigin(format!("{}", e)))?;
@@ -107,8 +106,14 @@ impl WebAuthnConfig {
             })
             .collect();
 
-        Self::new_with_origins(&rp_id, &origin, &rp_name, &additional_origins, allow_any_port)
-            .map_err(ConfigError::Webauthn)
+        Self::new_with_origins(
+            &rp_id,
+            &origin,
+            &rp_name,
+            &additional_origins,
+            allow_any_port,
+        )
+        .map_err(ConfigError::Webauthn)
     }
 
     /// Get a reference to the Webauthn instance

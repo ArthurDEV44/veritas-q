@@ -34,3 +34,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Service Worker (auto-généré par Serwist)
+www/public/sw.js
+www/public/swe-worker-*.js

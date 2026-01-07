@@ -3,6 +3,7 @@
 //! These tests verify complete user workflows involving multiple commands
 //! and complex scenarios that go beyond unit testing.
 
+use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
@@ -10,7 +11,7 @@ use tempfile::TempDir;
 
 /// Get a Command for the veritas binary.
 fn veritas() -> Command {
-    Command::cargo_bin("veritas").unwrap()
+    cargo_bin_cmd!("veritas").into()
 }
 
 // ============================================================================
