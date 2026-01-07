@@ -25,5 +25,12 @@ Thumbs.db
 !tsconfig.json
 !/www/**/*.json
 
+# C2PA signing keys (never commit private keys)
+/keys/
+*.key
+*.crt
+!*.example.key
+!*.example.crt
+
 # Logs
 *.log
