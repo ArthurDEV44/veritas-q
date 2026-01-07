@@ -14,5 +14,5 @@ pub mod webauthn;
 pub use config::Config;
 pub use error::ApiError;
 pub use openapi::ApiDoc;
-pub use routes::{create_router, create_router_with_config};
-pub use webauthn::{DeviceAttestation, WebAuthnConfig, WebAuthnStorage};
+pub use routes::{create_router, create_router_with_config, create_router_with_config_sync};
+pub use webauthn::{DeviceAttestation, StorageError, WebAuthnConfig, WebAuthnStorage};

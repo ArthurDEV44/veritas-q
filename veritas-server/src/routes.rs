@@ -31,12 +31,30 @@ use crate::webauthn::{
 };
 
 /// Create the application router with default config (for testing)
+/// Uses in-memory storage for WebAuthn.
 pub fn create_router() -> Router {
-    create_router_with_config(&Config::default())
+    create_router_with_config_sync(&Config::default())
 }
 
-/// Create the application router with custom configuration
-pub fn create_router_with_config(config: &Config) -> Router {
+/// Create the application router with in-memory WebAuthn storage (sync version for tests)
+pub fn create_router_with_config_sync(config: &Config) -> Router {
+    create_router_internal(config, WebAuthnStorage::in_memory())
+}
+
+/// Create the application router with custom configuration (async version)
+/// Uses PostgreSQL storage if DATABASE_URL is set.
+pub async fn create_router_with_config(config: &Config) -> Router {
+    let storage = WebAuthnStorage::from_env()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to initialize WebAuthn storage: {}, using in-memory", e);
+            WebAuthnStorage::in_memory()
+        });
+    create_router_internal(config, storage)
+}
+
+/// Internal router creation with provided storage
+fn create_router_internal(config: &Config, webauthn_storage: WebAuthnStorage) -> Router {
     // Configure CORS based on allowed_origins
     let cors = match &config.allowed_origins {
         Some(origins) if !origins.is_empty() => {
@@ -79,15 +97,14 @@ pub fn create_router_with_config(config: &Config) -> Router {
         .make_span_with(DefaultMakeSpan::new().include_headers(true))
         .on_response(DefaultOnResponse::new().include_headers(true));
 
-    // Initialize WebAuthn state
-    let webauthn_state = Arc::new(WebAuthnState::from_env().unwrap_or_else(|e| {
-        tracing::warn!("Failed to initialize WebAuthn: {}, using defaults", e);
-        WebAuthnState {
-            config: crate::webauthn::WebAuthnConfig::from_env()
-                .expect("WebAuthn config must be valid"),
-            storage: WebAuthnStorage::new(),
-        }
-    }));
+    // Initialize WebAuthn state with provided storage
+    let webauthn_config = crate::webauthn::WebAuthnConfig::from_env()
+        .expect("WebAuthn config must be valid");
+
+    let webauthn_state = Arc::new(WebAuthnState {
+        config: webauthn_config,
+        storage: webauthn_storage,
+    });
 
     // WebAuthn routes (require state)
     let webauthn_router = Router::new()

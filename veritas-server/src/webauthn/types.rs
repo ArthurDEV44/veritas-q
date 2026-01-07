@@ -108,6 +108,16 @@ pub enum AuthenticatorType {
     CrossPlatform,
 }
 
+impl AuthenticatorType {
+    /// Get string representation for database storage
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Platform => "platform",
+            Self::CrossPlatform => "cross_platform",
+        }
+    }
+}
+
 /// WebAuthn attestation statement format
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -127,6 +137,21 @@ pub enum AttestationFormat {
     /// None (self-attestation)
     #[default]
     None,
+}
+
+impl AttestationFormat {
+    /// Get string representation for database storage
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Packed => "packed",
+            Self::Tpm => "tpm",
+            Self::AndroidKey => "android_key",
+            Self::AndroidSafetyNet => "android_safety_net",
+            Self::Apple => "apple",
+            Self::FidoU2f => "fido_u2f",
+            Self::None => "none",
+        }
+    }
 }
 
 /// Device model information from FIDO Metadata Service

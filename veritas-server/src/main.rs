@@ -58,7 +58,7 @@ async fn main() {
     println!("║   Quantum-Authenticated Media Sealing      ║");
     println!("╚════════════════════════════════════════════╝");
 
-    let app = create_router_with_config(&config);
+    let app = create_router_with_config(&config).await;
 
     tracing::info!("Listening on http://{}", addr);
     tracing::info!("Endpoints: POST /seal, POST /verify, GET /health, GET /ready");

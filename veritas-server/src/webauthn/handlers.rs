@@ -24,14 +24,26 @@ pub struct WebAuthnState {
 
 impl WebAuthnState {
     /// Create a new WebAuthn state from environment
-    pub fn from_env() -> Result<Self, ApiError> {
+    ///
+    /// Uses PostgreSQL storage if DATABASE_URL is set, otherwise falls back to in-memory.
+    pub async fn from_env() -> Result<Self, ApiError> {
         let config = WebAuthnConfig::from_env().map_err(|e| {
             ApiError::internal(format!("Failed to create WebAuthn config: {:?}", e))
         })?;
-        Ok(Self {
+
+        let storage = WebAuthnStorage::from_env().await.map_err(|e| {
+            ApiError::internal(format!("Failed to create WebAuthn storage: {:?}", e))
+        })?;
+
+        Ok(Self { config, storage })
+    }
+
+    /// Create with in-memory storage (for testing)
+    pub fn in_memory(config: WebAuthnConfig) -> Self {
+        Self {
             config,
-            storage: WebAuthnStorage::new(),
-        })
+            storage: WebAuthnStorage::in_memory(),
+        }
     }
 }
 
@@ -141,14 +153,18 @@ pub async fn finish_registration(
     };
 
     // Store credential
-    state.storage.store_credential(
-        credential_id.clone(),
-        StoredCredential {
-            passkey,
-            device_attestation: device_attestation.clone(),
-            device_name,
-        },
-    );
+    state
+        .storage
+        .store_credential(
+            credential_id.clone(),
+            StoredCredential {
+                passkey,
+                device_attestation: device_attestation.clone(),
+                device_name,
+            },
+        )
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to store credential: {:?}", e)))?;
 
     tracing::info!(credential_id = %credential_id, "WebAuthn registration completed");
 
@@ -178,6 +194,8 @@ pub async fn start_authentication(
     let stored = state
         .storage
         .get_credential(&req.credential_id)
+        .await
+        .map_err(|e| ApiError::internal(format!("Storage error: {:?}", e)))?
         .ok_or_else(|| ApiError::bad_request("Credential not found"))?;
 
     // Start authentication
@@ -239,6 +257,8 @@ pub async fn finish_authentication(
     let stored = state
         .storage
         .get_credential(&credential_id)
+        .await
+        .map_err(|e| ApiError::internal(format!("Storage error: {:?}", e)))?
         .ok_or_else(|| ApiError::bad_request("Credential not found"))?;
 
     // Complete authentication
@@ -262,11 +282,11 @@ pub async fn finish_authentication(
     let mut updated_passkey = stored.passkey.clone();
     updated_passkey.update_credential(&auth_result);
 
-    state.storage.update_credential_attestation(
-        &credential_id,
-        device_attestation.clone(),
-        updated_passkey,
-    );
+    state
+        .storage
+        .update_credential_attestation(&credential_id, device_attestation.clone(), updated_passkey)
+        .await
+        .map_err(|e| ApiError::internal(format!("Failed to update credential: {:?}", e)))?;
 
     tracing::info!(
         credential_id = %credential_id,

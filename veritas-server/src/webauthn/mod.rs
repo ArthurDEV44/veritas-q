@@ -7,14 +7,14 @@
 //!
 //! - `config`: WebAuthn Relying Party configuration
 //! - `handlers`: HTTP endpoint handlers for registration/authentication
-//! - `storage`: In-memory storage for credentials and challenge states
+//! - `storage`: Hybrid storage (PostgreSQL for credentials, memory for challenges)
 //! - `types`: Request/response types for the WebAuthn API
 //! - `mds`: FIDO Metadata Service integration for device model lookup
 
 mod config;
 pub mod handlers;
 mod mds;
-mod storage;
+pub mod storage;
 mod types;
 
 pub use config::WebAuthnConfig;
@@ -22,7 +22,7 @@ pub use handlers::{
     finish_authentication, finish_registration, start_authentication, start_registration,
     WebAuthnState,
 };
-pub use storage::WebAuthnStorage;
+pub use storage::{StorageError, StoredCredential, WebAuthnStorage};
 pub use types::{
     AttestationFormat, AuthenticatorType, DeviceAttestation, DeviceAttestationResponse,
     DeviceModel, FinishAuthenticationRequest, FinishRegistrationRequest,

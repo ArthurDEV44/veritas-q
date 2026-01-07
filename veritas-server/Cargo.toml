@@ -39,6 +39,7 @@ webauthn-rs.workspace = true
 webauthn-rs-proto.workspace = true
 url.workspace = true
 dashmap.workspace = true
+sqlx.workspace = true
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
