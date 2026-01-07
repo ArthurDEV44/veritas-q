@@ -557,18 +557,18 @@ export default function CameraCapture() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-surface flex flex-col items-center justify-center gap-4 p-6"
+              className="absolute inset-0 bg-surface flex flex-col items-center gap-4 p-4 overflow-y-auto"
             >
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center"
+                className="w-14 h-14 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0"
                 style={{ boxShadow: "0 0 30px rgba(34, 197, 94, 0.3)" }}
               >
-                <CheckCircle className="w-10 h-10 text-green-500" />
+                <CheckCircle className="w-7 h-7 text-green-500" />
               </motion.div>
-              <h3 className="text-xl font-semibold text-green-500">Scellé !</h3>
+              <h3 className="text-lg font-semibold text-green-500">Scellé !</h3>
               {sealData && (
                 <div className="w-full max-w-sm space-y-2">
                   <div className="bg-surface-elevated rounded-lg p-3">
