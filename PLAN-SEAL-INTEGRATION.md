@@ -1,9 +1,9 @@
 # Plan d'Intégration Complète du Sceau Veritas dans les Images
 
-> **Version**: 1.1
+> **Version**: 1.2
 > **Date**: 2026-01-07
 > **Auteur**: Claude Code (Anthropic)
-> **Statut**: Phase 1 COMPLÈTE - Prêt pour Phase 2
+> **Statut**: Phase 2 COMPLÈTE - Prêt pour Phase 3
 
 ---
 
@@ -31,15 +31,34 @@
 - `C2PA_SIGNING_KEY=/etc/secrets/c2pa-signing.key`
 - `C2PA_SIGNING_CERT=/etc/secrets/c2pa-signing.crt`
 
-### 🔲 Phase 2: Soft Binding - À FAIRE
+### ✅ Phase 2: Soft Binding - COMPLÈTE
+
+**Module Watermark implémenté dans `veritas-core/src/watermark/`:**
+- `mod.rs` - Exports du module (remplace l'ancien `phash.rs`)
+- `perceptual.rs` - `PerceptualHasher` pour le hachage perceptuel d'images
+  - Algorithmes supportés: pHash (DCT), dHash (Gradient), aHash (Moyenne), Blockhash
+  - Distance de Hamming pour comparaison de similarité
+  - Seuil recommandé: ≤10 pour images similaires
+
+**API étendue:**
+- `POST /seal` retourne maintenant `perceptual_hash` (hex) pour les images
+- Le hash perceptuel est inclus dans `QuantumSealAssertion.perceptual_hash`
+
+**Tests de robustesse (`veritas-core/tests/watermark_robustness.rs`):**
+- ✅ Compression JPEG (50%, 70%, 90%) - Distance 0
+- ✅ Redimensionnement (50%, 75%, 150%) - Distance 0
+- ✅ Rognage (10%, 25%) - Distance 0
+- ⚠️ Rotation (90°, 180°) - Distance 20-40 (non invariant par conception)
+- ✅ Transformations combinées - Distance 0
+
 ### 🔲 Phase 3: Manifest Repository - À FAIRE
 ### 🔲 Phase 4: Intégration Frontend - À FAIRE
 ### 🔲 Phase 5: Vérification & Polish - À FAIRE
 
 ### 📋 Prochaines étapes immédiates:
 1. Tester les endpoints `/c2pa/embed` et `/c2pa/verify` sur Render
-2. Commencer Phase 2: Ajouter `image_hasher` pour le perceptual hash
-3. Créer le module `veritas-core/src/watermark/`
+2. Commencer Phase 3: Créer le module `veritas-server/src/manifest_store/`
+3. Implémenter le stockage PostgreSQL des manifests pour la résolution soft binding
 
 ---
 
@@ -923,7 +942,7 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 2: Soft Binding (1-2 semaines)
+### Phase 2: Soft Binding ✅ COMPLÈTE
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -932,20 +951,24 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Semaine 4:                                                 │
-│  □ Ajouter dépendance image_hasher                         │
-│  □ Créer module veritas-core/src/watermark/                │
-│  □ Implémenter PerceptualHasher                            │
-│  □ Tests de similarité d'images                            │
+│  ✅ Ajouter dépendance image_hasher (déjà présente)        │
+│  ✅ Créer module veritas-core/src/watermark/               │
+│  ✅ Implémenter PerceptualHasher                           │
+│  ✅ Tests de similarité d'images                           │
 │                                                             │
 │  Semaine 5:                                                 │
-│  □ Intégrer pHash dans le workflow de scellement           │
-│  □ Ajouter l'assertion soft binding au manifest            │
-│  □ Tests de résistance (crop, resize, compression)         │
+│  ✅ Intégrer pHash dans le workflow de scellement          │
+│  ✅ Ajouter l'assertion soft binding au manifest           │
+│  ✅ Tests de résistance (crop, resize, compression)        │
+│                                                             │
+│  API étendue:                                               │
+│  ✅ POST /seal retourne perceptual_hash (hex)              │
+│  ✅ 15 tests de robustesse passent                         │
 │                                                             │
 │  Livrables:                                                 │
-│  ✓ Hash perceptuel calculé pour chaque image               │
-│  ✓ Assertion soft binding dans le manifest                 │
-│  ✓ Tests de robustesse du pHash                            │
+│  ✅ Hash perceptuel calculé pour chaque image              │
+│  ✅ Assertion soft binding dans le manifest                │
+│  ✅ Tests de robustesse du pHash                           │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```

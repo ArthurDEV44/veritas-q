@@ -27,6 +27,11 @@ pub struct SealResponse {
     /// Whether device attestation was included in the seal
     #[schema(example = true)]
     pub has_device_attestation: bool,
+    /// Perceptual hash for soft binding (hex-encoded, images only)
+    /// Used to identify similar images even after compression, resizing, or cropping
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "a1b2c3d4e5f67890")]
+    pub perceptual_hash: Option<String>,
 }
 
 /// Maximum age for device attestation to be considered fresh (5 minutes)
@@ -183,6 +188,9 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
 
     let has_device_attestation = device_attestation.is_some();
 
+    // Extract perceptual hash for soft binding (images only)
+    let perceptual_hash = seal.content_hash.perceptual_hash.as_ref().map(hex::encode);
+
     // Note: In a full implementation, we would embed the device_attestation
     // into the VeritasSeal structure. For now, it's validated and logged
     // to demonstrate the WebAuthn integration flow.
@@ -192,5 +200,6 @@ pub async fn seal_handler(mut multipart: Multipart) -> Result<Json<SealResponse>
         seal_data,
         timestamp: seal.capture_timestamp_utc,
         has_device_attestation,
+        perceptual_hash,
     }))
 }

@@ -180,7 +180,7 @@ impl ContentHash {
     /// If the content is not a valid image, only the cryptographic hash is computed.
     #[cfg(feature = "perceptual-hash")]
     pub fn from_bytes_with_phash(data: &[u8]) -> Self {
-        use crate::phash::compute_phash;
+        use crate::watermark::compute_phash;
 
         let mut hasher = Sha3_256::new();
         hasher.update(data);

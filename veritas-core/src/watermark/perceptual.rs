@@ -12,7 +12,7 @@
 //! # Usage
 //!
 //! ```no_run
-//! use veritas_core::phash::{PerceptualHasher, HashAlgorithm};
+//! use veritas_core::watermark::{PerceptualHasher, HashAlgorithm};
 //!
 //! let image_data = std::fs::read("image.jpg").unwrap();
 //! let hasher = PerceptualHasher::new(HashAlgorithm::PHash);

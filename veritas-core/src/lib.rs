@@ -37,10 +37,10 @@
 //! ```
 
 pub mod error;
-#[cfg(feature = "perceptual-hash")]
-pub mod phash;
 pub mod qrng;
 pub mod seal;
+#[cfg(feature = "perceptual-hash")]
+pub mod watermark;
 
 #[cfg(feature = "c2pa")]
 pub mod c2pa;
@@ -62,9 +62,11 @@ pub use seal::SealBuilder;
 #[cfg(feature = "network")]
 pub use qrng::{AnuQrng, MockQrng, QuantumEntropySource};
 
-// Perceptual hashing exports
+// Perceptual hashing exports (soft binding)
 #[cfg(feature = "perceptual-hash")]
-pub use phash::{compute_phash, HashAlgorithm, PerceptualHash, PerceptualHasher};
+pub use watermark::{
+    compute_phash, hamming_distance, HashAlgorithm, PerceptualHash, PerceptualHasher,
+};
 
 #[cfg(all(test, feature = "network"))]
 mod tests {
