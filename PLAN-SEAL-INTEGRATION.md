@@ -1,8 +1,8 @@
 # Plan d'Intégration Complète du Sceau Veritas dans les Images
 
-> **Version**: 1.5
+> **Version**: 1.6
 > **Date**: 2026-01-07
-> **Statut**: Phase 4 COMPLÈTE - Prêt pour Phase 5
+> **Statut**: Phase 5 COMPLÈTE - Vérification & Polish
 
 ---
 
@@ -83,22 +83,44 @@
 
 ---
 
-## Phase 5: Vérification & Polish (À FAIRE)
-
-### Objectifs
-
-- Améliorer le composant `Verifier`
-- Extraction et affichage du manifest C2PA
-- Résolution soft binding (image sans métadonnées)
-- Badge visuel optionnel (watermark visible)
-- Tests de charge et performance
-- Documentation utilisateur
+## Phase 5: Vérification & Polish (COMPLÈTE)
 
 ### Livrables
 
-- Vérification complète dans l'app
-- Résolution soft binding fonctionnelle
-- Documentation complète
+**Composant Verifier amélioré** (`www/components/Verifier.tsx`):
+- Support de 3 chemins de vérification : classique, C2PA, soft binding
+- Détection automatique du type de vérification selon les fichiers déposés
+- Interface en français avec messages d'état détaillés
+- Bouton adaptatif : "Vérifier le sceau" vs "Rechercher l'authenticité"
+
+**Composant VerificationResult** (`www/components/VerificationResult.tsx`):
+- Affichage détaillé des résultats C2PA (source QRNG, horodatage, signature, ancrage blockchain)
+- Affichage des résultats soft binding avec niveau de confiance et distance Hamming
+- Barre de confiance visuelle pour les correspondances perceptuelles
+- Avertissements pour images modifiées (compression/redimensionnement)
+
+**Fonctions API utilitaires** (`www/lib/verification.ts`):
+- `verifyClassic()` - Vérification avec fichier .veritas
+- `verifyC2pa()` - Extraction et vérification de manifest C2PA
+- `resolveByImage()` - Résolution soft binding par hash perceptuel
+- `verifyUnified()` - Fonction unifiée avec fallback automatique
+- Utilitaires de formatage (timestamp, hash, source QRNG, niveau de confiance)
+
+**Tests de performance k6** (`scripts/load-test/k6-verify.js`):
+- Scénario de charge mixte (60% verify, 30% c2pa, 10% resolve)
+- Montée en charge progressive : 10 → 50 → 100 utilisateurs
+- Seuils de performance : /verify p95 < 200ms, /c2pa/verify p95 < 300ms, /resolve p95 < 100ms
+- Métriques personnalisées par endpoint
+
+**Documentation utilisateur** (`docs/guide-utilisateur.md`):
+- Guide complet en français
+- Explication des 3 méthodes de vérification
+- Interprétation des résultats (distance Hamming, niveaux de confiance)
+- FAQ détaillée
+
+### Badge visuel (OPTIONNEL - Non implémenté)
+
+Le badge visuel (watermark visible sur images vérifiées) a été reporté car jugé non prioritaire.
 
 ---
 

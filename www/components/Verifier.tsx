@@ -5,22 +5,29 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
   Shield,
-  ShieldCheck,
-  ShieldX,
   Loader2,
   FileImage,
   X,
   AlertCircle,
+  Search,
+  FileCheck,
 } from "lucide-react";
+import VerificationResult from "./VerificationResult";
+import {
+  verifyUnified,
+  isImageFile,
+  isSealFile,
+  type UnifiedVerificationResult,
+} from "@/lib/verification";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-
-type VerifyState = "idle" | "dropped" | "verifying" | "verified" | "failed" | "error";
-
-interface VerifyResponse {
-  authentic: boolean;
-  details: string;
-}
+type VerifyState =
+  | "idle"
+  | "dropped"
+  | "verifying"
+  | "checking_c2pa"
+  | "resolving"
+  | "complete"
+  | "error";
 
 interface DroppedFile {
   file: File;
@@ -32,7 +39,7 @@ export default function Verifier() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [mediaFile, setMediaFile] = useState<DroppedFile | null>(null);
   const [sealFile, setSealFile] = useState<DroppedFile | null>(null);
-  const [verifyResult, setVerifyResult] = useState<VerifyResponse | null>(null);
+  const [result, setResult] = useState<UnifiedVerificationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -45,16 +52,13 @@ export default function Verifier() {
     setIsDragOver(false);
   }, []);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
 
-      const files = Array.from(e.dataTransfer.files);
-      processFiles(files);
-    },
-    []
-  );
+    const files = Array.from(e.dataTransfer.files);
+    processFiles(files);
+  }, []);
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,11 +72,13 @@ export default function Verifier() {
 
   const processFiles = (files: File[]) => {
     for (const file of files) {
-      if (file.name.endsWith(".veritas")) {
-        // This is a seal file
+      if (isSealFile(file)) {
         setSealFile({ file });
-      } else if (file.type.startsWith("image/") || file.type.startsWith("video/") || file.type.startsWith("audio/")) {
-        // This is a media file
+      } else if (
+        file.type.startsWith("image/") ||
+        file.type.startsWith("video/") ||
+        file.type.startsWith("audio/")
+      ) {
         const preview = file.type.startsWith("image/")
           ? URL.createObjectURL(file)
           : undefined;
@@ -83,35 +89,38 @@ export default function Verifier() {
   };
 
   const verify = useCallback(async () => {
-    if (!mediaFile || !sealFile) return;
+    if (!mediaFile) return;
 
-    setState("verifying");
     setErrorMessage("");
+    setResult(null);
+
+    // Update state based on verification path
+    if (sealFile) {
+      setState("verifying");
+    } else if (isImageFile(mediaFile.file)) {
+      setState("checking_c2pa");
+    } else {
+      setState("verifying");
+    }
 
     try {
-      // Read seal file as text (base64 encoded CBOR)
-      const sealText = await sealFile.file.text();
+      const verificationResult = await verifyUnified(
+        mediaFile.file,
+        sealFile?.file
+      );
 
-      const formData = new FormData();
-      formData.append("file", mediaFile.file);
-      formData.append("seal_data", sealText);
-
-      const response = await fetch(`${API_URL}/verify`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || `HTTP ${response.status}`);
+      // Update state for soft binding if we went that route
+      if (verificationResult.method === "soft_binding") {
+        setState("resolving");
+        // Small delay to show resolving state
+        await new Promise((r) => setTimeout(r, 300));
       }
 
-      const data: VerifyResponse = await response.json();
-      setVerifyResult(data);
-      setState(data.authentic ? "verified" : "failed");
+      setResult(verificationResult);
+      setState("complete");
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : "Verification failed"
+        err instanceof Error ? err.message : "Erreur de vérification"
       );
       setState("error");
     }
@@ -123,72 +132,56 @@ export default function Verifier() {
     }
     setMediaFile(null);
     setSealFile(null);
-    setVerifyResult(null);
+    setResult(null);
     setErrorMessage("");
     setState("idle");
   }, [mediaFile]);
 
-  const canVerify = mediaFile && sealFile;
+  // Can verify with just media file (will try C2PA or soft binding)
+  const canVerify = mediaFile !== null;
+
+  // Get status message for verification in progress
+  const getStatusMessage = () => {
+    switch (state) {
+      case "verifying":
+        return {
+          title: "Vérification en cours...",
+          subtitle: "Validation de la signature quantique",
+        };
+      case "checking_c2pa":
+        return {
+          title: "Analyse C2PA...",
+          subtitle: "Recherche d'un manifest intégré",
+        };
+      case "resolving":
+        return {
+          title: "Résolution en cours...",
+          subtitle: "Recherche par hash perceptuel",
+        };
+      default:
+        return { title: "", subtitle: "" };
+    }
+  };
+
+  const isProcessing = ["verifying", "checking_c2pa", "resolving"].includes(state);
 
   return (
     <div className="flex flex-col items-center gap-6 w-full">
-      {/* Result Shield */}
       <AnimatePresence mode="wait">
-        {(state === "verified" || state === "failed") && (
+        {/* Result Display */}
+        {state === "complete" && result && (
           <motion.div
-            key="shield"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.5 }}
-            transition={{ type: "spring", stiffness: 200, damping: 20 }}
-            className={`flex flex-col items-center gap-4 p-8 rounded-2xl ${
-              state === "verified"
-                ? "bg-green-500/10 shield-verified"
-                : "bg-red-500/10 shield-failed"
-            }`}
+            key="result"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="w-full flex justify-center"
           >
-            {state === "verified" ? (
-              <>
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.2, type: "spring" }}
-                  className="quantum-glow"
-                  style={{
-                    boxShadow: "0 0 40px rgba(34, 197, 94, 0.4)",
-                    borderRadius: "999px"
-                  }}
-                >
-                  <ShieldCheck className="w-24 h-24 text-green-500" />
-                </motion.div>
-                <h2 className="text-2xl font-bold text-green-500">AUTHENTIC</h2>
-                <p className="text-foreground/60 text-center max-w-sm">
-                  {verifyResult?.details}
-                </p>
-              </>
-            ) : (
-              <>
-                <motion.div
-                  animate={{ x: [0, -5, 5, -5, 5, 0] }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                >
-                  <ShieldX className="w-24 h-24 text-red-500" />
-                </motion.div>
-                <h2 className="text-2xl font-bold text-red-500">INVALID</h2>
-                <p className="text-foreground/60 text-center max-w-sm">
-                  {verifyResult?.details || "The seal does not match the content"}
-                </p>
-              </>
-            )}
-            <button
-              onClick={reset}
-              className="mt-4 px-6 py-2 bg-surface-elevated hover:bg-surface-elevated/80 rounded-full border border-border transition-colors text-sm"
-            >
-              Verify Another
-            </button>
+            <VerificationResult result={result} onReset={reset} />
           </motion.div>
         )}
 
+        {/* Error Display */}
         {state === "error" && (
           <motion.div
             key="error"
@@ -198,18 +191,21 @@ export default function Verifier() {
             className="flex flex-col items-center gap-4 p-6 bg-red-500/10 rounded-2xl"
           >
             <AlertCircle className="w-16 h-16 text-red-500" />
-            <h3 className="text-lg font-semibold text-red-500">Error</h3>
-            <p className="text-foreground/60 text-center max-w-sm">{errorMessage}</p>
+            <h3 className="text-lg font-semibold text-red-500">Erreur</h3>
+            <p className="text-foreground/60 text-center max-w-sm">
+              {errorMessage}
+            </p>
             <button
               onClick={reset}
               className="mt-2 px-6 py-2 bg-surface-elevated hover:bg-surface-elevated/80 rounded-full border border-border transition-colors text-sm"
             >
-              Try Again
+              Réessayer
             </button>
           </motion.div>
         )}
 
-        {state !== "verified" && state !== "failed" && state !== "error" && (
+        {/* Drop Zone / Verification UI */}
+        {state !== "complete" && state !== "error" && (
           <motion.div
             key="dropzone"
             initial={{ opacity: 0 }}
@@ -234,23 +230,24 @@ export default function Verifier() {
                 accept="image/*,video/*,audio/*,.veritas"
                 onChange={handleFileSelect}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={isProcessing}
               />
 
-              {state === "verifying" ? (
+              {isProcessing ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
                   <Loader2 className="w-12 h-12 text-quantum animate-spin" />
-                  <p className="text-quantum font-medium">Verifying...</p>
+                  <p className="text-quantum font-medium">
+                    {getStatusMessage().title}
+                  </p>
                   <p className="text-foreground/60 text-sm">
-                    Checking quantum signature
+                    {getStatusMessage().subtitle}
                   </p>
                 </div>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
                   <div
                     className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${
-                      isDragOver
-                        ? "bg-quantum/20"
-                        : "bg-surface-elevated"
+                      isDragOver ? "bg-quantum/20" : "bg-surface-elevated"
                     }`}
                   >
                     {isDragOver ? (
@@ -261,21 +258,24 @@ export default function Verifier() {
                   </div>
                   <div className="text-center">
                     <p className="font-medium text-foreground">
-                      {isDragOver ? "Drop files here" : "Drop files to verify"}
+                      {isDragOver
+                        ? "Déposez les fichiers"
+                        : "Déposez des fichiers à vérifier"}
                     </p>
                     <p className="text-sm text-foreground/60 mt-1">
-                      or click to browse
+                      ou cliquez pour parcourir
                     </p>
                   </div>
-                  <p className="text-xs text-foreground/40 mt-2">
-                    Drop both the media file and its .veritas seal
-                  </p>
+                  <div className="text-xs text-foreground/40 mt-2 text-center space-y-1">
+                    <p>Image seule : recherche C2PA ou résolution soft binding</p>
+                    <p>Image + .veritas : vérification classique</p>
+                  </div>
                 </div>
               )}
             </div>
 
             {/* File indicators */}
-            {(mediaFile || sealFile) && state !== "verifying" && (
+            {(mediaFile || sealFile) && !isProcessing && (
               <div className="mt-4 space-y-2">
                 {mediaFile && (
                   <motion.div
@@ -287,7 +287,7 @@ export default function Verifier() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={mediaFile.preview}
-                        alt="Preview"
+                        alt="Aperçu"
                         className="w-10 h-10 rounded object-cover"
                       />
                     ) : (
@@ -298,7 +298,7 @@ export default function Verifier() {
                         {mediaFile.file.name}
                       </p>
                       <p className="text-xs text-foreground/60">
-                        {(mediaFile.file.size / 1024).toFixed(1)} KB
+                        {(mediaFile.file.size / 1024).toFixed(1)} Ko
                       </p>
                     </div>
                     <button
@@ -321,7 +321,7 @@ export default function Verifier() {
                       <p className="text-sm font-medium truncate">
                         {sealFile.file.name}
                       </p>
-                      <p className="text-xs text-quantum">Veritas Seal</p>
+                      <p className="text-xs text-quantum">Sceau Veritas</p>
                     </div>
                     <button
                       onClick={() => setSealFile(null)}
@@ -339,16 +339,32 @@ export default function Verifier() {
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mt-6 flex justify-center"
+                className="mt-6 flex flex-col items-center gap-3"
               >
                 <motion.button
                   whileTap={{ scale: 0.95 }}
                   onClick={verify}
                   className="flex items-center gap-2 px-8 py-3 bg-quantum text-black font-semibold rounded-full hover:bg-quantum-dim transition-colors quantum-glow-sm"
                 >
-                  <Shield className="w-5 h-5" />
-                  <span>Verify Seal</span>
+                  {sealFile ? (
+                    <>
+                      <FileCheck className="w-5 h-5" />
+                      <span>Vérifier le sceau</span>
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-5 h-5" />
+                      <span>Rechercher l&apos;authenticité</span>
+                    </>
+                  )}
                 </motion.button>
+
+                {/* Verification method hint */}
+                {!sealFile && isImageFile(mediaFile.file) && (
+                  <p className="text-xs text-foreground/50 text-center">
+                    Recherche de manifest C2PA intégré ou résolution par hash perceptuel
+                  </p>
+                )}
               </motion.div>
             )}
 
@@ -359,9 +375,7 @@ export default function Verifier() {
                 animate={{ opacity: 1 }}
                 className="mt-4 text-center text-sm text-foreground/60"
               >
-                {!mediaFile
-                  ? "Add a media file to verify"
-                  : "Add a .veritas seal file"}
+                Ajoutez un fichier média à vérifier
               </motion.p>
             )}
           </motion.div>
