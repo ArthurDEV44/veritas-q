@@ -6,6 +6,7 @@ import { Camera, Shield } from "lucide-react";
 import CameraCapture from "@/components/CameraCapture";
 import CameraPermissionGuard from "@/components/CameraPermissionGuard";
 import Verifier from "@/components/Verifier";
+import DebugConsole from "@/components/DebugConsole";
 
 type TabId = "scan" | "check";
 
@@ -25,6 +26,8 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-full gap-6">
+      {/* Debug console for mobile testing */}
+      <DebugConsole />
       {/* Tab navigation - Fixed at bottom on mobile, top on desktop */}
       <div className="order-last sm:order-first">
         {/* Desktop tabs */}
