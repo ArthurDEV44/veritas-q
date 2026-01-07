@@ -424,22 +424,9 @@ export default function CameraCapture() {
             </motion.div>
           )}
 
-          {state === "requesting" && (
-            <motion.div
-              key="requesting"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-4"
-            >
-              <Loader2 className="w-12 h-12 text-quantum animate-spin" />
-              <p className="text-foreground/60 text-sm">
-                Accès à la caméra...
-              </p>
-            </motion.div>
-          )}
 
-          {(state === "streaming" ||
+          {(state === "requesting" ||
+            state === "streaming" ||
             state === "capturing" ||
             state === "sealing") && (
             <motion.div
@@ -456,6 +443,16 @@ export default function CameraCapture() {
                 muted
                 className="w-full h-full object-cover"
               />
+
+              {/* Loading overlay during camera request */}
+              {state === "requesting" && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface/80">
+                  <Loader2 className="w-12 h-12 text-quantum animate-spin" />
+                  <p className="text-foreground/60 text-sm mt-4">
+                    Accès à la caméra...
+                  </p>
+                </div>
+              )}
 
               {/* Capture frame overlay */}
               <div className="absolute inset-4 border-2 border-quantum/30 rounded-lg pointer-events-none" />
