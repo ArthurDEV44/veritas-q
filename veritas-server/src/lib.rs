@@ -4,6 +4,7 @@
 //! The main binary uses these same components.
 
 pub mod config;
+pub mod db;
 pub mod error;
 pub mod handlers;
 pub mod manifest_store;
@@ -13,6 +14,7 @@ pub mod validation;
 pub mod webauthn;
 
 pub use config::Config;
+pub use db::{CreateUser, TrustTier, UpdateUser, User, UserRepository, UserResponse};
 pub use error::ApiError;
 pub use manifest_store::{
     ManifestInput, ManifestRecord, ManifestStoreError, PostgresManifestStore, SimilarityMatch,

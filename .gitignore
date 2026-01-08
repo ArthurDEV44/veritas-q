@@ -40,3 +40,12 @@ www/public/sw.js
 www/public/swe-worker-*.js
 
 assets/
+
+# BMAD Method - temporary artifacts (keep config and agents versioned)
+_bmad-output/implementation-artifacts/
+_bmad/
+_bmad-output/
+
+# CLAUDE
+CLAUDE.md
+.claude

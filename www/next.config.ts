@@ -16,6 +16,18 @@ const nextConfig: NextConfig = {
   // Empty turbopack config to satisfy Next.js 16 validation
   // Serwist uses webpack plugin, Turbopack doesn't affect production build
   turbopack: {},
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "img.clerk.com",
+      },
+      {
+        protocol: "https",
+        hostname: "images.clerk.dev",
+      },
+    ],
+  },
   async headers() {
     return [
       {

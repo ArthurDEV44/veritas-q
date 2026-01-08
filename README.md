@@ -72,9 +72,13 @@ veritas-cli anchor <CHEMIN_SCEAU> --update-seal
 Pour l'intégration B2B, lancez le serveur Truth API :
 
 ```bash
-cargo run -p veritas-server --release
+# Charger les variables d'environnement (.env) et lancer le serveur
+export $(grep -v '^#' .env | xargs) && cargo run -p veritas-server --release
+
 # Le serveur tourne sur http://127.0.0.1:3000
 ```
+
+> **Note** : Le fichier `.env` à la racine doit contenir `DATABASE_URL` pour activer les fonctionnalités base de données (authentification utilisateurs, stockage des seals, etc.).
 
 ### Fonctionnalités Production-Ready
 

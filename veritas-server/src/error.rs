@@ -16,6 +16,14 @@ pub enum ApiError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    /// Unauthorized - missing or invalid authentication
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+
+    /// Not found - requested resource does not exist
+    #[error("Not found: {0}")]
+    NotFound(String),
+
     /// Request timeout - operation took too long
     #[error("Request timeout: {0}")]
     Timeout(String),
@@ -39,6 +47,16 @@ impl ApiError {
         Self::BadRequest(message.into())
     }
 
+    /// Create an unauthorized error
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::Unauthorized(message.into())
+    }
+
+    /// Create a not found error
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::NotFound(message.into())
+    }
+
     /// Create an internal server error
     pub fn internal(message: impl Into<String>) -> Self {
         Self::Internal(message.into())
@@ -58,6 +76,8 @@ impl ApiError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Timeout(_) => StatusCode::REQUEST_TIMEOUT,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
@@ -69,6 +89,8 @@ impl ApiError {
     fn error_category(&self) -> &'static str {
         match self {
             Self::BadRequest(_) => "bad_request",
+            Self::Unauthorized(_) => "unauthorized",
+            Self::NotFound(_) => "not_found",
             Self::Timeout(_) => "timeout",
             Self::Internal(_) => "internal",
             Self::ServiceUnavailable(_) => "service_unavailable",
@@ -85,12 +107,20 @@ impl IntoResponse for ApiError {
 
         // Log based on severity
         match &self {
-            Self::BadRequest(_) => {
+            Self::BadRequest(_) | Self::NotFound(_) => {
                 tracing::warn!(
                     status = %status,
                     category = category,
                     error = %message,
                     "Client error"
+                );
+            }
+            Self::Unauthorized(_) => {
+                tracing::warn!(
+                    status = %status,
+                    category = category,
+                    error = %message,
+                    "Authentication error"
                 );
             }
             Self::ServiceUnavailable(_) => {

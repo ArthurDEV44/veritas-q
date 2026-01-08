@@ -42,6 +42,24 @@ export default function Verifier() {
   const [result, setResult] = useState<UnifiedVerificationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const processFiles = useCallback((files: File[]) => {
+    for (const file of files) {
+      if (isSealFile(file)) {
+        setSealFile({ file });
+      } else if (
+        file.type.startsWith("image/") ||
+        file.type.startsWith("video/") ||
+        file.type.startsWith("audio/")
+      ) {
+        const preview = file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : undefined;
+        setMediaFile({ file, preview });
+      }
+    }
+    setState("dropped");
+  }, []);
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -58,7 +76,7 @@ export default function Verifier() {
 
     const files = Array.from(e.dataTransfer.files);
     processFiles(files);
-  }, []);
+  }, [processFiles]);
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,26 +85,8 @@ export default function Verifier() {
         processFiles(files);
       }
     },
-    []
+    [processFiles]
   );
-
-  const processFiles = (files: File[]) => {
-    for (const file of files) {
-      if (isSealFile(file)) {
-        setSealFile({ file });
-      } else if (
-        file.type.startsWith("image/") ||
-        file.type.startsWith("video/") ||
-        file.type.startsWith("audio/")
-      ) {
-        const preview = file.type.startsWith("image/")
-          ? URL.createObjectURL(file)
-          : undefined;
-        setMediaFile({ file, preview });
-      }
-    }
-    setState("dropped");
-  };
 
   const verify = useCallback(async () => {
     if (!mediaFile) return;
