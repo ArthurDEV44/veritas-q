@@ -38,3 +38,5 @@ Thumbs.db
 # Service Worker (auto-généré par Serwist)
 www/public/sw.js
 www/public/swe-worker-*.js
+
+assets/
