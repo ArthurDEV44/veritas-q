@@ -184,33 +184,28 @@ impl LfdQrng {
         let start = Instant::now();
         let url = self.build_url();
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| {
-                let latency_ms = start.elapsed().as_millis();
-                if Self::is_transient_error(&e) {
-                    warn!(
-                        error = %e,
-                        latency_ms = latency_ms as u64,
-                        "Transient error, will retry"
-                    );
-                    backoff::Error::transient(VeritasError::QrngError(format!(
-                        "Transient error (will retry): {e}"
-                    )))
-                } else {
-                    warn!(
-                        error = %e,
-                        latency_ms = latency_ms as u64,
-                        "Permanent error, aborting"
-                    );
-                    backoff::Error::permanent(VeritasError::QrngError(format!(
-                        "LfD QRNG request failed: {e}"
-                    )))
-                }
-            })?;
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            let latency_ms = start.elapsed().as_millis();
+            if Self::is_transient_error(&e) {
+                warn!(
+                    error = %e,
+                    latency_ms = latency_ms as u64,
+                    "Transient error, will retry"
+                );
+                backoff::Error::transient(VeritasError::QrngError(format!(
+                    "Transient error (will retry): {e}"
+                )))
+            } else {
+                warn!(
+                    error = %e,
+                    latency_ms = latency_ms as u64,
+                    "Permanent error, aborting"
+                );
+                backoff::Error::permanent(VeritasError::QrngError(format!(
+                    "LfD QRNG request failed: {e}"
+                )))
+            }
+        })?;
 
         let status = response.status();
         debug!(status = %status, "Received HTTP response");
@@ -380,11 +375,15 @@ mod tests {
     #[test]
     fn test_transient_status_codes() {
         assert!(LfdQrng::is_transient_status(StatusCode::TOO_MANY_REQUESTS));
-        assert!(LfdQrng::is_transient_status(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(LfdQrng::is_transient_status(
+            StatusCode::SERVICE_UNAVAILABLE
+        ));
         assert!(LfdQrng::is_transient_status(StatusCode::GATEWAY_TIMEOUT));
         assert!(LfdQrng::is_transient_status(StatusCode::BAD_GATEWAY));
         assert!(!LfdQrng::is_transient_status(StatusCode::NOT_FOUND));
-        assert!(!LfdQrng::is_transient_status(StatusCode::INTERNAL_SERVER_ERROR));
+        assert!(!LfdQrng::is_transient_status(
+            StatusCode::INTERNAL_SERVER_ERROR
+        ));
     }
 
     // Integration test with real API

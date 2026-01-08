@@ -152,10 +152,10 @@ pub async fn resolve_handler(
         ));
     };
 
-    // Validate hash length
-    if phash_bytes.len() != 8 {
+    // Validate hash length (accept both legacy 5-byte and standard 8-byte hashes)
+    if phash_bytes.is_empty() || phash_bytes.len() > 8 {
         return Err(ApiError::bad_request(format!(
-            "Perceptual hash must be 8 bytes, got {}",
+            "Perceptual hash must be 1-8 bytes, got {}",
             phash_bytes.len()
         )));
     }

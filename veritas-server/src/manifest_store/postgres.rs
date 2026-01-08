@@ -141,7 +141,7 @@ impl PostgresManifestStore {
     ///
     /// # Arguments
     ///
-    /// * `phash` - The 8-byte perceptual hash to search for
+    /// * `phash` - The perceptual hash to search for (typically 8 bytes, but legacy 5-byte hashes are supported)
     /// * `threshold` - Maximum Hamming distance to consider a match (typically 10-15)
     /// * `limit` - Maximum number of results to return
     ///
@@ -154,9 +154,9 @@ impl PostgresManifestStore {
         threshold: u32,
         limit: usize,
     ) -> Result<Vec<SimilarityMatch>, ManifestStoreError> {
-        if phash.len() != 8 {
+        if phash.is_empty() || phash.len() > 8 {
             return Err(ManifestStoreError::InvalidInput(format!(
-                "Perceptual hash must be 8 bytes, got {}",
+                "Perceptual hash must be 1-8 bytes, got {}",
                 phash.len()
             )));
         }
@@ -225,12 +225,27 @@ impl PostgresManifestStore {
 
 /// Compute Hamming distance between two byte slices.
 ///
-/// Counts the number of differing bits between the two slices.
+/// Supports comparing hashes of different sizes for backwards compatibility.
+/// When sizes differ, compares the overlapping portion and adds a penalty
+/// of 8 bits per byte of size difference.
 fn hamming_distance_bytes(a: &[u8], b: &[u8]) -> u32 {
-    a.iter()
-        .zip(b.iter())
+    if a.is_empty() || b.is_empty() {
+        return u32::MAX;
+    }
+
+    let min_len = a.len().min(b.len());
+
+    // Compute Hamming distance for overlapping bytes
+    let distance: u32 = a[..min_len]
+        .iter()
+        .zip(b[..min_len].iter())
         .map(|(x, y)| (x ^ y).count_ones())
-        .sum()
+        .sum();
+
+    // Add penalty for size mismatch (8 bits per byte difference)
+    let size_penalty = (a.len().abs_diff(b.len()) * 8) as u32;
+
+    distance + size_penalty
 }
 
 #[cfg(test)]
@@ -263,5 +278,21 @@ mod tests {
         let a = [0xAA; 8]; // 10101010 pattern
         let b = [0x55; 8]; // 01010101 pattern
         assert_eq!(hamming_distance_bytes(&a, &b), 64); // All bits differ
+    }
+
+    #[test]
+    fn test_hamming_distance_size_mismatch() {
+        // Legacy 5-byte hash vs new 8-byte hash
+        let a = [0x00; 5];
+        let b = [0x00; 8];
+        // Should have penalty of 3 bytes * 8 bits = 24 bits
+        assert_eq!(hamming_distance_bytes(&a, &b), 24);
+    }
+
+    #[test]
+    fn test_hamming_distance_empty() {
+        let a: [u8; 0] = [];
+        let b = [0x00; 8];
+        assert_eq!(hamming_distance_bytes(&a, &b), u32::MAX);
     }
 }

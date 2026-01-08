@@ -66,6 +66,7 @@ pub use qrng::{AnuQrng, LfdQrng, MockQrng, QuantumEntropySource};
 #[cfg(feature = "perceptual-hash")]
 pub use watermark::{
     compute_phash, hamming_distance, HashAlgorithm, PerceptualHash, PerceptualHasher,
+    PERCEPTUAL_HASH_SIZE,
 };
 
 #[cfg(all(test, feature = "network"))]

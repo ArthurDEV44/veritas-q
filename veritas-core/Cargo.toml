@@ -8,7 +8,7 @@ description = "Core cryptographic primitives for Veritas Q quantum-authenticated
 [features]
 default = ["network", "perceptual-hash"]
 network = ["tokio", "reqwest", "async-trait", "backoff"]
-perceptual-hash = ["image", "image_hasher"]
+perceptual-hash = ["image", "blockhash"]
 c2pa = ["dep:c2pa", "dep:openssl"]
 
 [dependencies]
@@ -34,7 +34,7 @@ backoff = { workspace = true, optional = true }
 
 # Optional perceptual hashing dependencies
 image = { workspace = true, optional = true }
-image_hasher = { workspace = true, optional = true }
+blockhash = { workspace = true, optional = true }
 
 # Optional C2PA support
 c2pa = { workspace = true, optional = true }

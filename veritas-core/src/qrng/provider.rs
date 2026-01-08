@@ -16,7 +16,9 @@
 
 use std::sync::Arc;
 
-use super::{AnuQrng, AnuQrngConfig, LfdQrng, LfdQrngConfig, MockQrng, QrngSource, QuantumEntropySource};
+use super::{
+    AnuQrng, AnuQrngConfig, LfdQrng, LfdQrngConfig, MockQrng, QrngSource, QuantumEntropySource,
+};
 use crate::error::{Result, VeritasError};
 
 /// Configuration for creating QRNG providers.

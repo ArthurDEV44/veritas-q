@@ -3,11 +3,10 @@
 //! This module provides perceptual hash computation for detecting similar images
 //! even after re-encoding, compression, or minor modifications.
 //!
-//! # Algorithms
+//! # Algorithm
 //!
-//! - **pHash (DCT-based)**: Most robust against compression and scaling
-//! - **dHash (Gradient)**: Fast and effective for detecting duplicates
-//! - **aHash (Average)**: Simple but less robust
+//! Uses the Blockhash algorithm which produces a consistent 64-bit (8 byte) hash.
+//! This hash is robust against JPEG compression, resizing, and minor cropping.
 //!
 //! # Usage
 //!
@@ -15,7 +14,7 @@
 //! use veritas_core::watermark::{PerceptualHasher, HashAlgorithm};
 //!
 //! let image_data = std::fs::read("image.jpg").unwrap();
-//! let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+//! let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
 //! let hash1 = hasher.hash_bytes(&image_data).unwrap();
 //!
 //! // Compare two hashes
@@ -26,50 +25,45 @@
 //! ```
 
 use crate::error::{Result, VeritasError};
+use blockhash::{blockhash64, Blockhash64};
 use image::DynamicImage;
-use image_hasher::{HashAlg, HasherConfig, ImageHash};
 use serde::{Deserialize, Serialize};
+
+/// Fixed hash size in bytes (64 bits = 8 bytes).
+pub const PERCEPTUAL_HASH_SIZE: usize = 8;
 
 /// Perceptual hash algorithm selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum HashAlgorithm {
-    /// Average hash (aHash) - simple but less robust
-    Average,
-    /// Gradient hash (dHash) - fast and effective
-    Gradient,
-    /// DCT-based perceptual hash (pHash) - most robust
+    /// Blockhash64 - consistent 64-bit output, grid-based algorithm.
+    /// This is the recommended algorithm for production use.
     #[default]
-    PHash,
-    /// Blockhash algorithm
-    Blockhash,
-}
-
-impl HashAlgorithm {
-    /// Convert to image_hasher's HashAlg enum.
-    fn to_hash_alg(self) -> HashAlg {
-        match self {
-            Self::Average => HashAlg::Mean,
-            Self::Gradient => HashAlg::Gradient,
-            Self::PHash => HashAlg::DoubleGradient, // DCT-based in image_hasher
-            Self::Blockhash => HashAlg::Blockhash,
-        }
-    }
+    Blockhash64,
 }
 
 /// Computed perceptual hash with metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerceptualHash {
-    /// The hash bytes (typically 8 or 16 bytes depending on config)
+    /// The hash bytes (exactly 8 bytes for Blockhash64)
     pub hash: Vec<u8>,
     /// Algorithm used to compute the hash
     pub algorithm: HashAlgorithm,
-    /// Hash size in bits
+    /// Hash size in bits (64 for Blockhash64)
     pub bit_size: u32,
 }
 
 impl PerceptualHash {
-    /// Create a new perceptual hash from raw bytes.
-    pub fn new(hash: Vec<u8>, algorithm: HashAlgorithm) -> Self {
+    /// Create a new perceptual hash from fixed-size bytes.
+    pub fn new(hash: [u8; PERCEPTUAL_HASH_SIZE], algorithm: HashAlgorithm) -> Self {
+        Self {
+            hash: hash.to_vec(),
+            algorithm,
+            bit_size: (PERCEPTUAL_HASH_SIZE * 8) as u32,
+        }
+    }
+
+    /// Create from variable-size bytes (for legacy compatibility).
+    pub fn from_bytes(hash: Vec<u8>, algorithm: HashAlgorithm) -> Self {
         let bit_size = (hash.len() * 8) as u32;
         Self {
             hash,
@@ -80,36 +74,24 @@ impl PerceptualHash {
 
     /// Compute the Hamming distance between two perceptual hashes.
     ///
-    /// Lower values indicate more similar images.
-    /// A distance of 0 means identical hashes.
+    /// Supports comparing hashes of different sizes for backwards compatibility
+    /// with legacy hashes. A size mismatch incurs a penalty of 8 bits per
+    /// missing byte.
     ///
     /// # Returns
     ///
     /// - `Ok(distance)` if hashes are comparable
-    /// - `Err` if hashes have different sizes or algorithms
+    /// - `Err` if either hash is empty
     pub fn hamming_distance(&self, other: &Self) -> Result<u32> {
-        if self.algorithm != other.algorithm {
+        if self.hash.is_empty() || other.hash.is_empty() {
             return Err(VeritasError::PerceptualHashError(
-                "Cannot compare hashes with different algorithms".into(),
+                "Cannot compare empty hashes".into(),
             ));
         }
 
-        if self.hash.len() != other.hash.len() {
-            return Err(VeritasError::PerceptualHashError(format!(
-                "Hash size mismatch: {} vs {} bytes",
-                self.hash.len(),
-                other.hash.len()
-            )));
-        }
-
-        let distance = self
-            .hash
-            .iter()
-            .zip(other.hash.iter())
-            .map(|(a, b)| (a ^ b).count_ones())
-            .sum();
-
-        Ok(distance)
+        hamming_distance(&self.hash, &other.hash).ok_or_else(|| {
+            VeritasError::PerceptualHashError("Failed to compute Hamming distance".into())
+        })
     }
 
     /// Check if two images are similar based on Hamming distance threshold.
@@ -137,45 +119,25 @@ impl PerceptualHash {
     pub fn from_hex(hex_str: &str, algorithm: HashAlgorithm) -> Result<Self> {
         let hash = hex::decode(hex_str)
             .map_err(|e| VeritasError::PerceptualHashError(format!("Invalid hex string: {}", e)))?;
-        Ok(Self::new(hash, algorithm))
+        Ok(Self::from_bytes(hash, algorithm))
+    }
+
+    /// Check if this hash has the standard size (8 bytes).
+    pub fn is_standard_size(&self) -> bool {
+        self.hash.len() == PERCEPTUAL_HASH_SIZE
     }
 }
 
 /// Perceptual hasher configuration and computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PerceptualHasher {
     algorithm: HashAlgorithm,
-    hash_size: u32,
-}
-
-impl Default for PerceptualHasher {
-    fn default() -> Self {
-        Self::new(HashAlgorithm::default())
-    }
 }
 
 impl PerceptualHasher {
     /// Create a new perceptual hasher with the specified algorithm.
-    ///
-    /// Uses a default hash size of 8x8 = 64 bits.
     pub fn new(algorithm: HashAlgorithm) -> Self {
-        Self {
-            algorithm,
-            hash_size: 8,
-        }
-    }
-
-    /// Create a perceptual hasher with custom hash size.
-    ///
-    /// # Arguments
-    ///
-    /// * `algorithm` - The hashing algorithm to use
-    /// * `hash_size` - Size of the hash (width and height), e.g., 8 for 8x8=64 bits
-    pub fn with_size(algorithm: HashAlgorithm, hash_size: u32) -> Self {
-        Self {
-            algorithm,
-            hash_size,
-        }
+        Self { algorithm }
     }
 
     /// Compute perceptual hash from raw image bytes.
@@ -192,15 +154,13 @@ impl PerceptualHasher {
 
     /// Compute perceptual hash from a DynamicImage.
     pub fn hash_image(&self, image: &DynamicImage) -> Result<PerceptualHash> {
-        let hasher = HasherConfig::new()
-            .hash_size(self.hash_size, self.hash_size)
-            .hash_alg(self.algorithm.to_hash_alg())
-            .to_hasher();
-
-        let hash: ImageHash = hasher.hash_image(image);
-        let hash_bytes = hash.as_bytes().to_vec();
-
-        Ok(PerceptualHash::new(hash_bytes, self.algorithm))
+        match self.algorithm {
+            HashAlgorithm::Blockhash64 => {
+                let hash: Blockhash64 = blockhash64(image);
+                let hash_bytes: [u8; 8] = hash.into();
+                Ok(PerceptualHash::new(hash_bytes, HashAlgorithm::Blockhash64))
+            }
+        }
     }
 
     /// Check if the provided bytes appear to be a supported image format.
@@ -212,17 +172,11 @@ impl PerceptualHasher {
     pub fn algorithm(&self) -> HashAlgorithm {
         self.algorithm
     }
-
-    /// Get the hash size (width/height).
-    pub fn hash_size(&self) -> u32 {
-        self.hash_size
-    }
 }
 
 /// Compute a perceptual hash for image data using default settings.
 ///
-/// This is a convenience function that uses pHash (DCT-based) algorithm
-/// with 8x8 hash size (64 bits).
+/// Uses Blockhash64 algorithm which produces exactly 8 bytes.
 ///
 /// # Arguments
 ///
@@ -230,7 +184,8 @@ impl PerceptualHasher {
 ///
 /// # Returns
 ///
-/// The computed perceptual hash bytes, or `None` if the data is not a valid image.
+/// The computed perceptual hash bytes (exactly 8 bytes), or `None` if the data
+/// is not a valid image.
 pub fn compute_phash(image_data: &[u8]) -> Option<Vec<u8>> {
     let hasher = PerceptualHasher::default();
     hasher.hash_bytes(image_data).ok().map(|h| h.hash)
@@ -238,21 +193,32 @@ pub fn compute_phash(image_data: &[u8]) -> Option<Vec<u8>> {
 
 /// Compute Hamming distance between two perceptual hash byte arrays.
 ///
+/// Supports comparing hashes of different sizes for backwards compatibility.
+/// When sizes differ, compares the overlapping portion and adds a penalty
+/// of 8 bits per byte of size difference.
+///
 /// # Returns
 ///
-/// The number of differing bits, or `None` if the arrays have different lengths.
+/// The number of differing bits (including size penalty), or `None` if either
+/// array is empty.
 pub fn hamming_distance(hash1: &[u8], hash2: &[u8]) -> Option<u32> {
-    if hash1.len() != hash2.len() {
+    if hash1.is_empty() || hash2.is_empty() {
         return None;
     }
 
-    Some(
-        hash1
-            .iter()
-            .zip(hash2.iter())
-            .map(|(a, b)| (a ^ b).count_ones())
-            .sum(),
-    )
+    let min_len = hash1.len().min(hash2.len());
+
+    // Compute Hamming distance for overlapping bytes
+    let distance: u32 = hash1[..min_len]
+        .iter()
+        .zip(hash2[..min_len].iter())
+        .map(|(a, b)| (a ^ b).count_ones())
+        .sum();
+
+    // Add penalty for size mismatch (8 bits per byte difference)
+    let size_penalty = (hash1.len().abs_diff(hash2.len()) * 8) as u32;
+
+    Some(distance + size_penalty)
 }
 
 #[cfg(test)]
@@ -261,65 +227,98 @@ mod tests {
 
     #[test]
     fn test_hash_algorithm_default() {
-        assert_eq!(HashAlgorithm::default(), HashAlgorithm::PHash);
+        assert_eq!(HashAlgorithm::default(), HashAlgorithm::Blockhash64);
     }
 
     #[test]
     fn test_perceptual_hasher_default() {
         let hasher = PerceptualHasher::default();
-        assert_eq!(hasher.algorithm(), HashAlgorithm::PHash);
-        assert_eq!(hasher.hash_size(), 8);
+        assert_eq!(hasher.algorithm(), HashAlgorithm::Blockhash64);
+    }
+
+    #[test]
+    fn test_perceptual_hash_size() {
+        assert_eq!(PERCEPTUAL_HASH_SIZE, 8);
     }
 
     #[test]
     fn test_hamming_distance_identical() {
-        let hash1 = vec![0x00, 0xFF, 0xAA, 0x55];
-        let hash2 = vec![0x00, 0xFF, 0xAA, 0x55];
+        let hash1 = vec![0x00, 0xFF, 0xAA, 0x55, 0x00, 0xFF, 0xAA, 0x55];
+        let hash2 = vec![0x00, 0xFF, 0xAA, 0x55, 0x00, 0xFF, 0xAA, 0x55];
         assert_eq!(hamming_distance(&hash1, &hash2), Some(0));
     }
 
     #[test]
     fn test_hamming_distance_different() {
-        let hash1 = vec![0x00, 0x00, 0x00, 0x00];
-        let hash2 = vec![0xFF, 0xFF, 0xFF, 0xFF];
-        assert_eq!(hamming_distance(&hash1, &hash2), Some(32)); // 4 bytes * 8 bits
+        let hash1 = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let hash2 = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+        assert_eq!(hamming_distance(&hash1, &hash2), Some(64)); // 8 bytes * 8 bits
     }
 
     #[test]
     fn test_hamming_distance_partial() {
-        let hash1 = vec![0x00, 0x00];
-        let hash2 = vec![0x01, 0x00]; // 1 bit different
+        let hash1 = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let hash2 = vec![0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // 1 bit different
         assert_eq!(hamming_distance(&hash1, &hash2), Some(1));
     }
 
     #[test]
-    fn test_hamming_distance_length_mismatch() {
-        let hash1 = vec![0x00, 0x00];
-        let hash2 = vec![0x00, 0x00, 0x00];
+    fn test_hamming_distance_size_mismatch_with_penalty() {
+        // Legacy 5-byte hash vs new 8-byte hash
+        let hash1 = vec![0x00, 0x00, 0x00, 0x00, 0x00]; // 5 bytes
+        let hash2 = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // 8 bytes
+
+        // Should have penalty of 3 bytes * 8 bits = 24 bits
+        assert_eq!(hamming_distance(&hash1, &hash2), Some(24));
+    }
+
+    #[test]
+    fn test_hamming_distance_empty() {
+        let hash1: Vec<u8> = vec![];
+        let hash2 = vec![0x00, 0x00];
         assert_eq!(hamming_distance(&hash1, &hash2), None);
     }
 
     #[test]
     fn test_perceptual_hash_hex_roundtrip() {
-        let original = PerceptualHash::new(vec![0xDE, 0xAD, 0xBE, 0xEF], HashAlgorithm::PHash);
+        let original = PerceptualHash::new(
+            [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE],
+            HashAlgorithm::Blockhash64,
+        );
         let hex = original.to_hex();
-        assert_eq!(hex, "deadbeef");
+        assert_eq!(hex, "deadbeefcafebabe");
 
-        let restored = PerceptualHash::from_hex(&hex, HashAlgorithm::PHash).unwrap();
+        let restored = PerceptualHash::from_hex(&hex, HashAlgorithm::Blockhash64).unwrap();
         assert_eq!(restored.hash, original.hash);
         assert_eq!(restored.algorithm, original.algorithm);
     }
 
     #[test]
     fn test_perceptual_hash_similarity() {
-        let hash1 = PerceptualHash::new(vec![0x00, 0x00, 0x00, 0x00], HashAlgorithm::PHash);
-        let hash2 = PerceptualHash::new(vec![0x01, 0x00, 0x00, 0x00], HashAlgorithm::PHash);
+        let hash1 = PerceptualHash::new(
+            [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            HashAlgorithm::Blockhash64,
+        );
+        let hash2 = PerceptualHash::new(
+            [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            HashAlgorithm::Blockhash64,
+        );
 
         // 1 bit difference, within default threshold of 10
         assert!(hash1.is_similar(&hash2, None).unwrap());
 
         // With threshold of 0, not similar
         assert!(!hash1.is_similar(&hash2, Some(0)).unwrap());
+    }
+
+    #[test]
+    fn test_is_standard_size() {
+        let standard =
+            PerceptualHash::new([0x00; PERCEPTUAL_HASH_SIZE], HashAlgorithm::Blockhash64);
+        assert!(standard.is_standard_size());
+
+        let legacy = PerceptualHash::from_bytes(vec![0x00; 5], HashAlgorithm::Blockhash64);
+        assert!(!legacy.is_standard_size());
     }
 
     #[test]
@@ -334,21 +333,5 @@ mod tests {
 
         // Invalid
         assert!(!PerceptualHasher::is_supported_format(&[0x00, 0x00, 0x00]));
-    }
-
-    #[test]
-    fn test_algorithm_conversion() {
-        assert!(matches!(
-            HashAlgorithm::Average.to_hash_alg(),
-            HashAlg::Mean
-        ));
-        assert!(matches!(
-            HashAlgorithm::Gradient.to_hash_alg(),
-            HashAlg::Gradient
-        ));
-        assert!(matches!(
-            HashAlgorithm::Blockhash.to_hash_alg(),
-            HashAlg::Blockhash
-        ));
     }
 }

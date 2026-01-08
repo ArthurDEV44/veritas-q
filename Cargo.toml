@@ -34,7 +34,7 @@ sha3 = "0.10"
 
 # Image processing (perceptual hashing)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
-image_hasher = "2.0"
+blockhash = { version = "1.0", default-features = false, features = ["image"] }
 
 # Utilities
 thiserror = "2"

@@ -5,7 +5,9 @@
 
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
 use std::io::Cursor;
-use veritas_core::watermark::{hamming_distance, HashAlgorithm, PerceptualHasher};
+use veritas_core::watermark::{
+    hamming_distance, HashAlgorithm, PerceptualHasher, PERCEPTUAL_HASH_SIZE,
+};
 
 /// Maximum acceptable Hamming distance for "similar" images.
 /// With 64-bit hash, 10 bits = ~15% difference.
@@ -83,7 +85,7 @@ fn test_phash_jpeg_compression_90() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let compressed = compress_jpeg(&original, 90);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -107,7 +109,7 @@ fn test_phash_jpeg_compression_70() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let compressed = compress_jpeg(&original, 70);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -131,7 +133,7 @@ fn test_phash_jpeg_compression_50() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let compressed = compress_jpeg(&original, 50);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -159,7 +161,7 @@ fn test_phash_resize_75_percent() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let resized = resize_image(&original, 75);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -181,7 +183,7 @@ fn test_phash_resize_50_percent() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let resized = resize_image(&original, 50);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -203,7 +205,7 @@ fn test_phash_resize_150_percent() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let resized = resize_image(&original, 150);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -229,7 +231,7 @@ fn test_phash_crop_10_percent() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let cropped = crop_image(&original, 10);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -252,7 +254,7 @@ fn test_phash_crop_25_percent() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let cropped = crop_image(&original, 25);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -278,7 +280,7 @@ fn test_phash_rotation_180() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let rotated = rotate_180(&original);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -299,7 +301,7 @@ fn test_phash_rotation_90() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let rotated = rotate_90(&original);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -327,7 +329,7 @@ fn test_phash_resize_then_compress() {
     let resized = resize_image(&original, 75);
     let compressed = compress_jpeg(&resized, 70);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -354,7 +356,7 @@ fn test_phash_compress_then_resize() {
     let compressed = compress_jpeg(&original, 80);
     let resized = resize_image(&compressed, 60);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -374,35 +376,53 @@ fn test_phash_compress_then_resize() {
 }
 
 // ============================================================================
-// Algorithm Comparison Tests
+// Hash Size Consistency Tests
 // ============================================================================
 
 #[test]
-fn test_algorithm_comparison_on_compression() {
+fn test_hash_size_always_8_bytes() {
+    // Test that all hashes are exactly 8 bytes regardless of image size or content
+    let sizes = [(64, 64), (128, 128), (256, 256), (512, 512), (100, 200)];
+
+    for (width, height) in sizes {
+        let img = DynamicImage::ImageRgb8(create_test_image(width, height));
+        let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
+        let hash = hasher.hash_image(&img).expect("Failed to hash image");
+
+        assert_eq!(
+            hash.hash.len(),
+            PERCEPTUAL_HASH_SIZE,
+            "Hash for {}x{} image should be {} bytes, got {}",
+            width,
+            height,
+            PERCEPTUAL_HASH_SIZE,
+            hash.hash.len()
+        );
+    }
+}
+
+#[test]
+fn test_blockhash64_compression_robustness() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
     let compressed = compress_jpeg(&original, 70);
 
-    for algorithm in [
-        HashAlgorithm::Average,
-        HashAlgorithm::Gradient,
-        HashAlgorithm::PHash,
-        HashAlgorithm::Blockhash,
-    ] {
-        let hasher = PerceptualHasher::new(algorithm);
-        let hash1 = hasher
-            .hash_image(&original)
-            .expect("Failed to hash original");
-        let hash2 = hasher
-            .hash_image(&compressed)
-            .expect("Failed to hash compressed");
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
+    let hash1 = hasher
+        .hash_image(&original)
+        .expect("Failed to hash original");
+    let hash2 = hasher
+        .hash_image(&compressed)
+        .expect("Failed to hash compressed");
 
-        let distance =
-            hamming_distance(&hash1.hash, &hash2.hash).expect("Distance calculation failed");
-        println!(
-            "{:?} algorithm - JPEG 70% distance: {}",
-            algorithm, distance
-        );
-    }
+    let distance = hamming_distance(&hash1.hash, &hash2.hash).expect("Distance calculation failed");
+    println!("Blockhash64 algorithm - JPEG 70% distance: {}", distance);
+
+    assert!(
+        distance <= AGGRESSIVE_THRESHOLD,
+        "Blockhash64 should handle JPEG compression (distance: {}, threshold: {})",
+        distance,
+        AGGRESSIVE_THRESHOLD
+    );
 }
 
 // ============================================================================
@@ -413,7 +433,7 @@ fn test_algorithm_comparison_on_compression() {
 fn test_identical_images() {
     let original = DynamicImage::ImageRgb8(create_test_image(256, 256));
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher
         .hash_image(&original)
         .expect("Failed to hash original");
@@ -438,7 +458,7 @@ fn test_completely_different_images() {
     }
     let img2 = DynamicImage::ImageRgb8(img2_raw);
 
-    let hasher = PerceptualHasher::new(HashAlgorithm::PHash);
+    let hasher = PerceptualHasher::new(HashAlgorithm::Blockhash64);
     let hash1 = hasher.hash_image(&img1).expect("Failed to hash img1");
     let hash2 = hasher.hash_image(&img2).expect("Failed to hash img2");
 
