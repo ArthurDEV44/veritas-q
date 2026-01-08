@@ -15,13 +15,16 @@
     "@clerk/localizations": "^3.34.0",
     "@clerk/nextjs": "^6.36.7",
     "@serwist/next": "^9.5.0",
+    "@tanstack/react-query": "^5.90.16",
+    "dexie": "^4.2.1",
     "framer-motion": "^12.24.0",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "serwist": "^9.5.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -14,7 +14,11 @@ pub mod validation;
 pub mod webauthn;
 
 pub use config::Config;
-pub use db::{CreateUser, TrustTier, UpdateUser, User, UserRepository, UserResponse};
+pub use db::{
+    CreateSeal, CreateUser, DeviceInfo, Seal, SealListParams, SealListResponse, SealLocation,
+    SealMetadata, SealRecord, SealRepository, TrustTier, UpdateUser, User, UserRepository,
+    UserResponse,
+};
 pub use error::ApiError;
 pub use manifest_store::{
     ManifestInput, ManifestRecord, ManifestStoreError, PostgresManifestStore, SimilarityMatch,

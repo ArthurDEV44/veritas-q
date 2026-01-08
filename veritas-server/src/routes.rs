@@ -21,12 +21,13 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::config::Config;
-use crate::db::UserRepository;
+use crate::db::{SealRepository, UserRepository};
 #[cfg(feature = "c2pa")]
 use crate::handlers::{c2pa_embed_handler, c2pa_verify_handler};
 use crate::handlers::{
-    delete_user_handler, get_current_user_handler, health, ready, resolve_handler, seal_handler,
-    sync_user_handler, verify_handler, AppState,
+    delete_user_handler, export_seal_handler, get_current_user_handler, get_user_seal_handler,
+    health, list_user_seals_handler, ready, resolve_handler, seal_handler, sync_user_handler,
+    verify_handler, AppState,
 };
 use crate::manifest_store::PostgresManifestStore;
 use crate::openapi::ApiDoc;
@@ -43,7 +44,7 @@ pub fn create_router() -> Router {
 
 /// Create the application router with in-memory WebAuthn storage (sync version for tests)
 pub fn create_router_with_config_sync(config: &Config) -> Router {
-    create_router_internal(config, WebAuthnStorage::in_memory(), None, None)
+    create_router_internal(config, WebAuthnStorage::in_memory(), None, None, None)
 }
 
 /// Create the application router with custom configuration (async version)
@@ -58,7 +59,7 @@ pub async fn create_router_with_config(config: &Config) -> Router {
     });
 
     // Initialize stores if DATABASE_URL is set
-    let (manifest_store, user_repo) = match std::env::var("DATABASE_URL") {
+    let (manifest_store, user_repo, seal_repo) = match std::env::var("DATABASE_URL") {
         Ok(url) => {
             // Create shared pool
             let pool = match sqlx::PgPool::connect(&url).await {
@@ -88,20 +89,26 @@ pub async fn create_router_with_config(config: &Config) -> Router {
             };
 
             // Initialize user repository
-            let user_repo = pool.map(|p| {
+            let user_repo = pool.as_ref().map(|p| {
                 tracing::info!("User repository initialized");
-                Arc::new(UserRepository::new(p))
+                Arc::new(UserRepository::new(p.clone()))
             });
 
-            (manifest_store, user_repo)
+            // Initialize seal repository
+            let seal_repo = pool.map(|p| {
+                tracing::info!("Seal repository initialized");
+                Arc::new(SealRepository::new(p))
+            });
+
+            (manifest_store, user_repo, seal_repo)
         }
         Err(_) => {
             tracing::info!("DATABASE_URL not set, database features disabled");
-            (None, None)
+            (None, None, None)
         }
     };
 
-    create_router_internal(config, storage, manifest_store, user_repo)
+    create_router_internal(config, storage, manifest_store, user_repo, seal_repo)
 }
 
 /// Internal router creation with provided storage
@@ -110,6 +117,7 @@ fn create_router_internal(
     webauthn_storage: WebAuthnStorage,
     manifest_store: Option<Arc<PostgresManifestStore>>,
     user_repo: Option<Arc<UserRepository>>,
+    seal_repo: Option<Arc<SealRepository>>,
 ) -> Router {
     // Configure CORS based on allowed_origins
     let cors = match &config.allowed_origins {
@@ -174,9 +182,10 @@ fn create_router_internal(
     let app_state = AppState {
         manifest_store,
         user_repo,
+        seal_repo,
     };
 
-    // Routes that require app state (seal, resolve, users)
+    // Routes that require app state (seal, resolve, users, seals)
     let stateful_router = Router::new()
         .route("/seal", post(seal_handler))
         .route("/resolve", post(resolve_handler))
@@ -186,6 +195,10 @@ fn create_router_internal(
             "/api/v1/users/me",
             get(get_current_user_handler).delete(delete_user_handler),
         )
+        // Seals routes (v1 API) - user's seal history
+        .route("/api/v1/seals", get(list_user_seals_handler))
+        .route("/api/v1/seals/{seal_id}", get(get_user_seal_handler))
+        .route("/api/v1/seals/{seal_id}/export", get(export_seal_handler))
         .with_state(app_state);
 
     // Base router with common layers

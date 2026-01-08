@@ -4,40 +4,79 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera,
+  Video,
   Loader2,
   CheckCircle,
   XCircle,
   RotateCcw,
   SwitchCamera,
-  WifiOff,
   ShieldCheck,
   Download,
+  MapPin,
+  MapPinOff,
+  User,
+  Square,
+  Circle,
+  CloudOff,
 } from "lucide-react";
 import { useServiceWorker } from "@/hooks/useServiceWorker";
 import { useDeviceAttestation } from "@/hooks/useDeviceAttestation";
+import { useSealMutation, SealResponse } from "@/hooks/useSealMutation";
+import { useOfflineStore } from "@/stores/offlineStore";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 import DeviceAttestationBadge from "@/components/DeviceAttestationBadge";
+import MiniMap from "@/components/MiniMap";
+import SealBadge, { TrustTier } from "@/components/SealBadge";
+import PendingSealBadge from "@/components/PendingSealBadge";
+import OfflineIndicator from "@/components/OfflineIndicator";
+import PendingCapturesList from "@/components/PendingCapturesList";
+import { useAuth } from "@clerk/nextjs";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+interface CapturedLocation {
+  lat: number;
+  lng: number;
+  altitude?: number;
+}
 
 type CaptureState =
   | "idle"
   | "requesting"
   | "streaming"
   | "capturing"
+  | "recording"
   | "sealing"
+  | "saving_offline"
   | "success"
+  | "pending_sync"
   | "error";
 
-interface SealResponse {
-  seal_id: string;
-  seal_data: string;
-  timestamp: number;
-  has_device_attestation: boolean;
-  perceptual_hash?: string;
-  /** Base64-encoded image with embedded C2PA manifest */
-  sealed_image?: string;
-  /** Size of the C2PA manifest in bytes */
-  manifest_size?: number;
+type CaptureMode = "photo" | "video";
+
+// Video capture constants
+const MAX_VIDEO_DURATION_SECONDS = 60; // 60 seconds for Free tier
+const MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+
+// Get supported video MIME type
+function getSupportedMimeType(): string {
+  const types = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+    "video/mp4",
+  ];
+  for (const type of types) {
+    if (MediaRecorder.isTypeSupported(type)) {
+      return type;
+    }
+  }
+  return "video/webm"; // fallback
+}
+
+// Format seconds to MM:SS
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
 // Detect iOS for specific handling
@@ -80,18 +119,39 @@ export default function CameraCapture() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [state, setState] = useState<CaptureState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [sealData, setSealData] = useState<SealResponse | null>(null);
   const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(null);
+  const [capturedVideoUrl, setCapturedVideoUrl] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">(
     "environment"
   );
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("photo");
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const [includeLocation, setIncludeLocation] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("veritas_include_gps") !== "false";
+    }
+    return true;
+  });
+  const [currentLocation, setCurrentLocation] = useState<GeolocationPosition | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [capturedLocation, setCapturedLocation] = useState<CapturedLocation | null>(null);
+  const [pendingLocalId, setPendingLocalId] = useState<string | null>(null);
+  const [pendingThumbnail, setPendingThumbnail] = useState<string | null>(null);
 
   const { isOffline } = useServiceWorker();
   const { getAttestationJson } = useDeviceAttestation();
+  const { isSignedIn, userId } = useAuth();
+  const sealMutation = useSealMutation();
+  const { addPendingCapture } = useOfflineStore();
+  const { pendingCount } = useOfflineSync();
 
   // Check for multiple cameras on mount
   useEffect(() => {
@@ -109,6 +169,49 @@ export default function CameraCapture() {
     }
   }, []);
 
+  // Request geolocation when GPS is enabled
+  useEffect(() => {
+    if (!includeLocation) {
+      setCurrentLocation(null);
+      setLocationError(null);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation not supported");
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentLocation(position);
+        setLocationError(null);
+      },
+      (error) => {
+        setLocationError(error.message);
+        setCurrentLocation(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 30000,
+      }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [includeLocation]);
+
+  // Persist location preference
+  const toggleLocation = useCallback(() => {
+    setIncludeLocation((prev) => {
+      const newValue = !prev;
+      localStorage.setItem("veritas_include_gps", String(newValue));
+      return newValue;
+    });
+  }, []);
+
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -120,15 +223,7 @@ export default function CameraCapture() {
   }, []);
 
   const startCamera = useCallback(async () => {
-    // Check offline status
-    if (isOffline) {
-      setErrorMessage(
-        "Connexion internet requise pour le scellement quantique."
-      );
-      setState("error");
-      return;
-    }
-
+    // Note: We allow camera start even when offline for offline capture mode
     setState("requesting");
 
     try {
@@ -141,12 +236,14 @@ export default function CameraCapture() {
 
       // Request camera with iOS-friendly constraints
       // iOS Safari is picky - use simpler constraints
+      // Request audio only for video mode
+      const needsAudio = captureMode === "video";
       const constraints: MediaStreamConstraints = isIOS()
         ? {
             video: {
               facingMode: facingMode,
             },
-            audio: false,
+            audio: needsAudio,
           }
         : {
             video: {
@@ -154,7 +251,7 @@ export default function CameraCapture() {
               width: { ideal: 1920, max: 3840 },
               height: { ideal: 1080, max: 2160 },
             },
-            audio: false,
+            audio: needsAudio,
           };
 
       console.log("Requesting camera with constraints:", JSON.stringify(constraints));
@@ -272,7 +369,7 @@ export default function CameraCapture() {
       setErrorMessage(getErrorMessage(err));
       setState("error");
     }
-  }, [facingMode, isOffline, stopCamera]);
+  }, [facingMode, stopCamera, captureMode]);
 
   const switchCamera = useCallback(async () => {
     stopCamera();
@@ -294,15 +391,6 @@ export default function CameraCapture() {
   const captureAndSeal = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    // Double-check offline status before sealing
-    if (isOffline) {
-      setErrorMessage(
-        "Connexion internet requise pour le scellement quantique."
-      );
-      setState("error");
-      return;
-    }
-
     setState("capturing");
 
     const video = videoRef.current;
@@ -322,79 +410,268 @@ export default function CameraCapture() {
     // Draw current video frame
     ctx.drawImage(video, 0, 0);
 
+    // Convert canvas to blob
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => {
+          if (b) resolve(b);
+          else reject(new Error("Echec de la creation de l'image"));
+        },
+        "image/jpeg",
+        0.92
+      );
+    });
+
+    // Build location data if available
+    const location = includeLocation && currentLocation
+      ? {
+          lat: currentLocation.coords.latitude,
+          lng: currentLocation.coords.longitude,
+          altitude: currentLocation.coords.altitude ?? undefined,
+        }
+      : undefined;
+
+    // Store captured location for display in success screen
+    setCapturedLocation(location ?? null);
+
+    // Create a URL for the captured image so user can download it
+    const imageUrl = URL.createObjectURL(blob);
+    setCapturedImageUrl(imageUrl);
+
+    // OFFLINE MODE: Save locally if offline
+    if (isOffline) {
+      setState("saving_offline");
+
+      try {
+        const localId = await addPendingCapture(
+          blob,
+          `capture_${Date.now()}.jpg`,
+          "image",
+          {
+            location,
+            deviceAttestation: getAttestationJson() ?? undefined,
+            userId: userId ?? undefined,
+          }
+        );
+
+        // Generate thumbnail for display
+        const thumbnailUrl = canvas.toDataURL("image/jpeg", 0.5);
+        setPendingThumbnail(thumbnailUrl);
+        setPendingLocalId(localId);
+
+        setState("pending_sync");
+        stopCamera();
+      } catch (err) {
+        setErrorMessage(getErrorMessage(err));
+        setState("error");
+      }
+      return;
+    }
+
+    // ONLINE MODE: Send to API for quantum sealing
     setState("sealing");
 
     try {
-      // Convert canvas to blob
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob(
-          (b) => {
-            if (b) resolve(b);
-            else reject(new Error("Échec de la création de l'image"));
-          },
-          "image/jpeg",
-          0.92
-        );
+      // Use mutation to create seal
+      const data = await sealMutation.mutateAsync({
+        file: blob,
+        filename: `capture_${Date.now()}.jpg`,
+        mediaType: "image",
+        deviceAttestation: getAttestationJson() ?? undefined,
+        location,
       });
 
-      // Create form data
-      const formData = new FormData();
-      formData.append("file", blob, `capture_${Date.now()}.jpg`);
-      formData.append("media_type", "image");
-
-      // Include device attestation if available and fresh
-      const attestationJson = getAttestationJson();
-      if (attestationJson) {
-        formData.append("device_attestation", attestationJson);
-      }
-
-      // Send to API with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-      const response = await fetch(`${API_URL}/seal`, {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || `Erreur HTTP ${response.status}`);
-      }
-
-      const data: SealResponse = await response.json();
       setSealData(data);
-
-      // Create a URL for the captured image so user can download it
-      const imageUrl = URL.createObjectURL(blob);
-      setCapturedImageUrl(imageUrl);
-
       setState("success");
       stopCamera();
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        setErrorMessage("Délai d'attente dépassé. Réessayez.");
+        setErrorMessage("Delai d'attente depasse. Reessayez.");
       } else {
         setErrorMessage(getErrorMessage(err));
       }
       setState("error");
     }
-  }, [isOffline, stopCamera, getAttestationJson]);
+  }, [isOffline, stopCamera, getAttestationJson, sealMutation, includeLocation, currentLocation, addPendingCapture, userId]);
+
+  // Stop video recording
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
+
+  // Start video recording
+  const startRecording = useCallback(() => {
+    if (!streamRef.current) {
+      setErrorMessage("Flux camera non disponible");
+      setState("error");
+      return;
+    }
+
+    // Note: We allow recording even when offline for offline capture mode
+    // Reset recorded chunks
+    recordedChunksRef.current = [];
+    setRecordingDuration(0);
+
+    try {
+      const mimeType = getSupportedMimeType();
+      const mediaRecorder = new MediaRecorder(streamRef.current, {
+        mimeType,
+        videoBitsPerSecond: 2500000, // 2.5 Mbps
+      });
+
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Clear recording timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
+        try {
+          // Create video blob
+          const mimeType = getSupportedMimeType();
+          const videoBlob = new Blob(recordedChunksRef.current, { type: mimeType });
+
+          // Check file size
+          if (videoBlob.size > MAX_VIDEO_SIZE_BYTES) {
+            throw new Error(`Video trop volumineuse (${Math.round(videoBlob.size / 1024 / 1024)}MB). Maximum: 50MB`);
+          }
+
+          // Build location data if available
+          const location = includeLocation && currentLocation
+            ? {
+                lat: currentLocation.coords.latitude,
+                lng: currentLocation.coords.longitude,
+                altitude: currentLocation.coords.altitude ?? undefined,
+              }
+            : undefined;
+
+          setCapturedLocation(location ?? null);
+
+          // Determine file extension based on mime type
+          const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+
+          // Create a URL for the captured video so user can preview/download it
+          const videoUrl = URL.createObjectURL(videoBlob);
+          setCapturedVideoUrl(videoUrl);
+
+          // OFFLINE MODE: Save locally if offline
+          if (isOffline) {
+            setState("saving_offline");
+
+            try {
+              const localId = await addPendingCapture(
+                videoBlob,
+                `video_${Date.now()}.${extension}`,
+                "video",
+                {
+                  location,
+                  deviceAttestation: getAttestationJson() ?? undefined,
+                  userId: userId ?? undefined,
+                }
+              );
+
+              setPendingLocalId(localId);
+              // No thumbnail for video in pending state, will use video URL
+              setPendingThumbnail(null);
+
+              setState("pending_sync");
+              stopCamera();
+            } catch (err) {
+              setErrorMessage(getErrorMessage(err));
+              setState("error");
+            }
+            return;
+          }
+
+          // ONLINE MODE: Send to API for quantum sealing
+          setState("sealing");
+
+          // Use mutation to create seal
+          const data = await sealMutation.mutateAsync({
+            file: videoBlob,
+            filename: `video_${Date.now()}.${extension}`,
+            mediaType: "video",
+            deviceAttestation: getAttestationJson() ?? undefined,
+            location,
+          });
+
+          setSealData(data);
+          setState("success");
+          stopCamera();
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") {
+            setErrorMessage("Delai d'attente depasse. Reessayez.");
+          } else {
+            setErrorMessage(getErrorMessage(err));
+          }
+          setState("error");
+        }
+      };
+
+      mediaRecorder.onerror = () => {
+        setErrorMessage("Erreur lors de l'enregistrement video");
+        setState("error");
+        stopRecording();
+      };
+
+      // Start recording with timeslice for regular data chunks
+      mediaRecorder.start(1000);
+      setState("recording");
+
+      // Start recording duration timer
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => {
+          const newDuration = prev + 1;
+          // Auto-stop at max duration
+          if (newDuration >= MAX_VIDEO_DURATION_SECONDS) {
+            stopRecording();
+          }
+          return newDuration;
+        });
+      }, 1000);
+    } catch {
+      setErrorMessage("Impossible de demarrer l'enregistrement video");
+      setState("error");
+    }
+  }, [isOffline, stopCamera, getAttestationJson, sealMutation, includeLocation, currentLocation, stopRecording, addPendingCapture, userId]);
 
   const reset = useCallback(() => {
+    // Stop any ongoing recording
+    stopRecording();
     stopCamera();
     setSealData(null);
+    setCapturedLocation(null);
+    setRecordingDuration(0);
     // Clean up the image URL to avoid memory leaks
     if (capturedImageUrl) {
       URL.revokeObjectURL(capturedImageUrl);
       setCapturedImageUrl(null);
     }
+    // Clean up video URL
+    if (capturedVideoUrl) {
+      URL.revokeObjectURL(capturedVideoUrl);
+      setCapturedVideoUrl(null);
+    }
+    // Clean up offline state
+    setPendingLocalId(null);
+    setPendingThumbnail(null);
     setErrorMessage("");
     setState("idle");
-  }, [stopCamera, capturedImageUrl]);
+  }, [stopCamera, stopRecording, capturedImageUrl, capturedVideoUrl]);
 
   const downloadImage = useCallback(() => {
     if (!sealData) return;
@@ -430,18 +707,105 @@ export default function CameraCapture() {
     }
   }, [capturedImageUrl, sealData]);
 
+  const downloadVideo = useCallback(() => {
+    if (!sealData || !capturedVideoUrl) return;
+
+    const mimeType = getSupportedMimeType();
+    const extension = mimeType.includes("mp4") ? "mp4" : "webm";
+
+    const link = document.createElement("a");
+    link.href = capturedVideoUrl;
+    link.download = `veritas-seal-${sealData.seal_id.slice(0, 8)}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [capturedVideoUrl, sealData]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopRecording();
       stopCamera();
     };
-  }, [stopCamera]);
+  }, [stopCamera, stopRecording]);
 
   return (
     <div className="flex flex-col items-center gap-6 w-full">
-      {/* Device attestation badge */}
-      <div className="w-full max-w-sm">
+      {/* Offline indicator banner */}
+      {isOffline && state === "idle" && (
+        <OfflineIndicator banner />
+      )}
+
+      {/* Device attestation badge + GPS toggle + Auth status */}
+      <div className="w-full max-w-sm space-y-2">
         <DeviceAttestationBadge compact={state !== "idle"} />
+
+        {/* GPS and Auth status row */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-surface-elevated rounded-lg border border-border">
+          {/* GPS Toggle */}
+          <button
+            onClick={toggleLocation}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-colors ${
+              includeLocation
+                ? currentLocation
+                  ? "bg-green-500/20 text-green-400"
+                  : locationError
+                    ? "bg-yellow-500/20 text-yellow-400"
+                    : "bg-quantum/20 text-quantum"
+                : "bg-surface text-foreground/40"
+            }`}
+          >
+            {includeLocation ? (
+              <>
+                <MapPin className="w-4 h-4" />
+                <span>{currentLocation ? "GPS actif" : locationError ? "GPS erreur" : "GPS..."}</span>
+              </>
+            ) : (
+              <>
+                <MapPinOff className="w-4 h-4" />
+                <span>GPS off</span>
+              </>
+            )}
+          </button>
+
+          {/* Auth Status */}
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${
+            isSignedIn
+              ? "bg-quantum/20 text-quantum"
+              : "bg-surface text-foreground/40"
+          }`}>
+            <User className="w-4 h-4" />
+            <span>{isSignedIn ? "Connecte" : "Anonyme"}</span>
+          </div>
+        </div>
+
+        {/* Capture Mode Toggle (Photo/Video) */}
+        {state === "idle" && (
+          <div className="flex items-center justify-center gap-1 p-1 bg-surface-elevated rounded-full border border-border">
+            <button
+              onClick={() => setCaptureMode("photo")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                captureMode === "photo"
+                  ? "bg-quantum text-black"
+                  : "text-foreground/60 hover:text-foreground"
+              }`}
+            >
+              <Camera className="w-4 h-4" />
+              <span>Photo</span>
+            </button>
+            <button
+              onClick={() => setCaptureMode("video")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                captureMode === "video"
+                  ? "bg-red-500 text-white"
+                  : "text-foreground/60 hover:text-foreground"
+              }`}
+            >
+              <Video className="w-4 h-4" />
+              <span>Video</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Camera viewport */}
@@ -457,19 +821,24 @@ export default function CameraCapture() {
             >
               <div className="w-20 h-20 rounded-full bg-surface-elevated flex items-center justify-center">
                 {isOffline ? (
-                  <WifiOff className="w-10 h-10 text-foreground/40" />
+                  <CloudOff className="w-10 h-10 text-amber-400" />
                 ) : (
                   <Camera className="w-10 h-10 text-foreground/60" />
                 )}
               </div>
               <p className="text-foreground/60 text-sm text-center px-4">
                 {isOffline
-                  ? "Connexion requise pour capturer"
-                  : "Appuyez pour activer la caméra"}
+                  ? "Mode hors-ligne actif"
+                  : "Appuyez pour activer la camera"}
               </p>
+              {isOffline && (
+                <p className="text-amber-400/80 text-xs text-center px-4">
+                  Les captures seront synchronisees au retour de la connexion
+                </p>
+              )}
               {isIOS() && !isOffline && (
                 <p className="text-foreground/40 text-xs text-center px-4">
-                  Safari recommandé sur iOS
+                  Safari recommande sur iOS
                 </p>
               )}
             </motion.div>
@@ -478,6 +847,7 @@ export default function CameraCapture() {
 
           {(state === "requesting" ||
             state === "streaming" ||
+            state === "recording" ||
             state === "capturing" ||
             state === "sealing") && (
             <motion.div
@@ -500,38 +870,87 @@ export default function CameraCapture() {
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface/80">
                   <Loader2 className="w-12 h-12 text-quantum animate-spin" />
                   <p className="text-foreground/60 text-sm mt-4">
-                    Accès à la caméra...
+                    Acces a la camera...
                   </p>
                 </div>
               )}
 
-              {/* Capture frame overlay */}
-              <div className="absolute inset-4 border-2 border-quantum/30 rounded-lg pointer-events-none" />
+              {/* Capture frame overlay - red when recording */}
+              <div className={`absolute inset-4 border-2 rounded-lg pointer-events-none ${
+                state === "recording" ? "border-red-500/50" : "border-quantum/30"
+              }`} />
 
-              {/* Corner markers */}
-              <div className="absolute top-4 left-4 w-6 h-6 border-l-2 border-t-2 border-quantum" />
-              <div className="absolute top-4 right-4 w-6 h-6 border-r-2 border-t-2 border-quantum" />
-              <div className="absolute bottom-4 left-4 w-6 h-6 border-l-2 border-b-2 border-quantum" />
-              <div className="absolute bottom-4 right-4 w-6 h-6 border-r-2 border-b-2 border-quantum" />
+              {/* Corner markers - red when recording */}
+              <div className={`absolute top-4 left-4 w-6 h-6 border-l-2 border-t-2 ${
+                state === "recording" ? "border-red-500" : "border-quantum"
+              }`} />
+              <div className={`absolute top-4 right-4 w-6 h-6 border-r-2 border-t-2 ${
+                state === "recording" ? "border-red-500" : "border-quantum"
+              }`} />
+              <div className={`absolute bottom-4 left-4 w-6 h-6 border-l-2 border-b-2 ${
+                state === "recording" ? "border-red-500" : "border-quantum"
+              }`} />
+              <div className={`absolute bottom-4 right-4 w-6 h-6 border-r-2 border-b-2 ${
+                state === "recording" ? "border-red-500" : "border-quantum"
+              }`} />
+
+              {/* Recording indicator */}
+              {state === "recording" && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/90 backdrop-blur-sm text-white text-sm font-medium"
+                >
+                  <motion.div
+                    animate={{ opacity: [1, 0.3, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                    className="w-2.5 h-2.5 rounded-full bg-white"
+                  />
+                  <span>{formatDuration(recordingDuration)}</span>
+                  <span className="text-white/70">/ {formatDuration(MAX_VIDEO_DURATION_SECONDS)}</span>
+                </motion.div>
+              )}
 
               {/* Camera switch button */}
-              {hasMultipleCameras && state === "streaming" && (
+              {hasMultipleCameras && (state === "streaming" || state === "recording") && (
                 <motion.button
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={switchCamera}
-                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/70 transition-colors"
-                  aria-label="Changer de caméra"
+                  disabled={state === "recording"}
+                  className={`absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white transition-colors ${
+                    state === "recording" ? "opacity-50 cursor-not-allowed" : "hover:bg-black/70"
+                  }`}
+                  aria-label="Changer de camera"
                 >
                   <SwitchCamera className="w-5 h-5" />
                 </motion.button>
               )}
 
               {/* Facing mode indicator */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-xs">
-                {facingMode === "environment" ? "Arrière" : "Avant"}
+              <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full backdrop-blur-sm text-white text-xs ${
+                state === "recording" ? "bg-red-500/50" : "bg-black/50"
+              }`}>
+                {facingMode === "environment" ? "Arriere" : "Avant"}
               </div>
+
+              {/* Mode indicator when streaming */}
+              {state === "streaming" && (
+                <div className="absolute top-4 left-4 flex items-center gap-1.5 px-2 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-xs">
+                  {captureMode === "photo" ? (
+                    <>
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Photo</span>
+                    </>
+                  ) : (
+                    <>
+                      <Video className="w-3.5 h-3.5 text-red-400" />
+                      <span>Video</span>
+                    </>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -551,6 +970,22 @@ export default function CameraCapture() {
             </motion.div>
           )}
 
+          {state === "saving_offline" && (
+            <motion.div
+              key="saving_offline"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-4"
+            >
+              <Loader2 className="w-12 h-12 text-amber-400 animate-spin" />
+              <p className="text-amber-400 font-medium">Sauvegarde locale...</p>
+              <p className="text-foreground/60 text-sm">
+                Le media sera scelle au retour de la connexion
+              </p>
+            </motion.div>
+          )}
+
           {state === "success" && (
             <motion.div
               key="success"
@@ -559,6 +994,76 @@ export default function CameraCapture() {
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-surface flex flex-col items-center gap-4 p-4 overflow-y-auto"
             >
+              {/* Image preview with SealBadge overlay */}
+              {(capturedImageUrl || sealData?.sealed_image) && !capturedVideoUrl && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="relative w-full max-w-sm rounded-xl overflow-hidden border border-border"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={
+                      sealData?.sealed_image
+                        ? `data:image/jpeg;base64,${sealData.sealed_image}`
+                        : capturedImageUrl || ""
+                    }
+                    alt="Media scelle"
+                    className="w-full h-auto"
+                  />
+                  {/* SealBadge overlay on the image */}
+                  {sealData && (
+                    <SealBadge
+                      sealId={sealData.seal_id}
+                      status="valid"
+                      trustTier={sealData.trust_tier as TrustTier}
+                      size="medium"
+                      position="bottom-right"
+                      clickable={true}
+                      showExternalIcon={true}
+                    />
+                  )}
+                </motion.div>
+              )}
+
+              {/* Video preview with SealBadge overlay */}
+              {capturedVideoUrl && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="relative w-full max-w-sm rounded-xl overflow-hidden border border-border"
+                >
+                  <video
+                    src={capturedVideoUrl}
+                    controls
+                    playsInline
+                    className="w-full h-auto"
+                  >
+                    Votre navigateur ne supporte pas la lecture video.
+                  </video>
+                  {/* SealBadge overlay on the video */}
+                  {sealData && (
+                    <div className="absolute bottom-12 right-2">
+                      <SealBadge
+                        sealId={sealData.seal_id}
+                        status="valid"
+                        trustTier={sealData.trust_tier as TrustTier}
+                        size="small"
+                        clickable={true}
+                        showExternalIcon={true}
+                      />
+                    </div>
+                  )}
+                  {/* Video icon indicator */}
+                  <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded-full bg-red-500/80 text-white text-xs">
+                    <Video className="w-3 h-3" />
+                    <span>Video</span>
+                  </div>
+                </motion.div>
+              )}
+
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
@@ -568,7 +1073,7 @@ export default function CameraCapture() {
               >
                 <CheckCircle className="w-7 h-7 text-green-500" />
               </motion.div>
-              <h3 className="text-lg font-semibold text-green-500">Scellé !</h3>
+              <h3 className="text-lg font-semibold text-green-500">Scelle !</h3>
               {sealData && (
                 <div className="w-full max-w-sm space-y-2">
                   <div className="bg-surface-elevated rounded-lg p-3">
@@ -598,6 +1103,39 @@ export default function CameraCapture() {
                     )}
                   </div>
 
+                  {/* Location display with mini-map */}
+                  {capturedLocation && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-foreground/40">Localisation</p>
+                      <MiniMap
+                        lat={capturedLocation.lat}
+                        lng={capturedLocation.lng}
+                        altitude={capturedLocation.altitude}
+                      />
+                    </div>
+                  )}
+
+                  {/* No location indicator */}
+                  {!capturedLocation && (
+                    <div className="rounded-lg p-3 bg-surface-elevated flex items-center gap-2">
+                      <MapPinOff className="w-4 h-4 text-foreground/40" />
+                      <span className="text-xs text-foreground/40">Sans localisation</span>
+                    </div>
+                  )}
+
+                  {/* Authenticated user indicator */}
+                  {sealData.user_id && (
+                    <div className="rounded-lg p-3 bg-quantum/10 border border-quantum/30 flex items-center gap-2">
+                      <User className="w-4 h-4 text-quantum" />
+                      <span className="text-sm text-quantum">
+                        Sceau authentifie
+                        <span className="text-quantum/60 ml-1">
+                          (Tier {sealData.trust_tier.replace("tier", "")})
+                        </span>
+                      </span>
+                    </div>
+                  )}
+
                   {/* C2PA manifest indicator */}
                   {sealData.sealed_image && (
                     <div className="rounded-lg p-3 bg-quantum/10 border border-quantum/30 flex items-center gap-2">
@@ -613,8 +1151,8 @@ export default function CameraCapture() {
                     </div>
                   )}
 
-                  {/* Download button */}
-                  {(capturedImageUrl || sealData.sealed_image) && (
+                  {/* Download button - Image */}
+                  {(capturedImageUrl || sealData.sealed_image) && !capturedVideoUrl && (
                     <motion.button
                       whileTap={{ scale: 0.95 }}
                       onClick={downloadImage}
@@ -628,6 +1166,114 @@ export default function CameraCapture() {
                       </span>
                     </motion.button>
                   )}
+
+                  {/* Download button - Video */}
+                  {capturedVideoUrl && (
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={downloadVideo}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-quantum text-black font-semibold rounded-lg hover:bg-quantum-dim transition-colors"
+                    >
+                      <Download className="w-5 h-5" />
+                      <span>Telecharger la video</span>
+                    </motion.button>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {state === "pending_sync" && (
+            <motion.div
+              key="pending_sync"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-surface flex flex-col items-center gap-4 p-4 overflow-y-auto"
+            >
+              {/* Image preview with PendingSealBadge */}
+              {(capturedImageUrl || pendingThumbnail) && !capturedVideoUrl && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="relative w-full max-w-sm rounded-xl overflow-hidden border border-amber-500/30"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={pendingThumbnail || capturedImageUrl || ""}
+                    alt="Media en attente"
+                    className="w-full h-auto"
+                  />
+                  <PendingSealBadge
+                    status="pending"
+                    size="medium"
+                    position="bottom-right"
+                    overlay={true}
+                  />
+                </motion.div>
+              )}
+
+              {/* Video preview with PendingSealBadge */}
+              {capturedVideoUrl && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="relative w-full max-w-sm rounded-xl overflow-hidden border border-amber-500/30"
+                >
+                  <video
+                    src={capturedVideoUrl}
+                    controls
+                    playsInline
+                    className="w-full h-auto"
+                  />
+                  <div className="absolute bottom-12 right-2">
+                    <PendingSealBadge status="pending" size="small" />
+                  </div>
+                </motion.div>
+              )}
+
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                className="w-14 h-14 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0"
+                style={{ boxShadow: "0 0 30px rgba(245, 158, 11, 0.3)" }}
+              >
+                <CloudOff className="w-7 h-7 text-amber-400" />
+              </motion.div>
+              <h3 className="text-lg font-semibold text-amber-400">Sauvegarde locale</h3>
+              <p className="text-foreground/60 text-sm text-center max-w-xs">
+                Le media sera scelle automatiquement au retour de la connexion internet.
+              </p>
+
+              {/* Location display */}
+              {capturedLocation && (
+                <div className="w-full max-w-sm space-y-2">
+                  <p className="text-xs text-foreground/40">Localisation capturee</p>
+                  <MiniMap
+                    lat={capturedLocation.lat}
+                    lng={capturedLocation.lng}
+                    altitude={capturedLocation.altitude}
+                  />
+                </div>
+              )}
+
+              {/* Pending sync indicator */}
+              <div className="w-full max-w-sm bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex items-center gap-2">
+                <CloudOff className="w-4 h-4 text-amber-400" />
+                <span className="text-sm text-amber-400">
+                  En attente de synchronisation
+                </span>
+              </div>
+
+              {pendingLocalId && (
+                <div className="w-full max-w-sm bg-surface-elevated rounded-lg p-3">
+                  <p className="text-xs text-foreground/40 mb-1">ID local</p>
+                  <p className="font-mono text-xs text-foreground/60 break-all">
+                    {pendingLocalId}
+                  </p>
                 </div>
               )}
             </motion.div>
@@ -662,28 +1308,76 @@ export default function CameraCapture() {
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={startCamera}
-            disabled={isOffline}
-            className="flex items-center gap-2 px-6 py-3 bg-surface-elevated hover:bg-surface-elevated/80 rounded-full border border-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`flex items-center gap-2 px-6 py-3 rounded-full border transition-colors ${
+              isOffline
+                ? "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400"
+                : "bg-surface-elevated hover:bg-surface-elevated/80 border-border"
+            }`}
           >
-            <Camera className="w-5 h-5" />
-            <span>Démarrer la caméra</span>
+            {isOffline ? (
+              <CloudOff className="w-5 h-5" />
+            ) : captureMode === "photo" ? (
+              <Camera className="w-5 h-5" />
+            ) : (
+              <Video className="w-5 h-5 text-red-400" />
+            )}
+            <span>{isOffline ? "Capturer hors-ligne" : "Demarrer la camera"}</span>
           </motion.button>
         )}
 
-        {state === "streaming" && (
+        {/* Photo mode: Capture button */}
+        {state === "streaming" && captureMode === "photo" && (
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={captureAndSeal}
-            className="relative flex items-center justify-center w-20 h-20 rounded-full bg-quantum text-black font-semibold transition-all hover:bg-quantum-dim"
-            style={{ boxShadow: "0 0 20px rgba(0, 255, 209, 0.4)" }}
+            className={`relative flex items-center justify-center w-20 h-20 rounded-full font-semibold transition-all ${
+              isOffline
+                ? "bg-amber-500 text-black hover:bg-amber-400"
+                : "bg-quantum text-black hover:bg-quantum-dim"
+            }`}
+            style={{ boxShadow: isOffline ? "0 0 20px rgba(245, 158, 11, 0.4)" : "0 0 20px rgba(0, 255, 209, 0.4)" }}
           >
-            <span className="text-lg">SCELLER</span>
+            <span className="text-lg">{isOffline ? "SAVE" : "SCELLER"}</span>
             {/* Outer ring animation */}
-            <span className="absolute inset-0 rounded-full border-2 border-quantum animate-ping opacity-30" />
+            <span className={`absolute inset-0 rounded-full border-2 animate-ping opacity-30 ${
+              isOffline ? "border-amber-500" : "border-quantum"
+            }`} />
           </motion.button>
         )}
 
-        {(state === "success" || state === "error") && (
+        {/* Video mode: Start recording button */}
+        {state === "streaming" && captureMode === "video" && (
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={startRecording}
+            className="relative flex items-center justify-center w-20 h-20 rounded-full bg-red-500 text-white font-semibold transition-all hover:bg-red-600"
+            style={{ boxShadow: "0 0 20px rgba(239, 68, 68, 0.4)" }}
+          >
+            <Circle className="w-8 h-8 fill-current" />
+            {/* Outer ring animation */}
+            <span className="absolute inset-0 rounded-full border-2 border-red-500 animate-ping opacity-30" />
+          </motion.button>
+        )}
+
+        {/* Video mode: Stop recording button */}
+        {state === "recording" && (
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={stopRecording}
+            className="relative flex items-center justify-center w-20 h-20 rounded-full bg-red-600 text-white font-semibold transition-all hover:bg-red-700"
+            style={{ boxShadow: "0 0 30px rgba(239, 68, 68, 0.5)" }}
+          >
+            <Square className="w-8 h-8 fill-current" />
+            {/* Pulsing ring when recording */}
+            <motion.span
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ duration: 1, repeat: Infinity }}
+              className="absolute inset-0 rounded-full border-2 border-red-400 opacity-50"
+            />
+          </motion.button>
+        )}
+
+        {(state === "success" || state === "error" || state === "pending_sync") && (
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={reset}
@@ -700,11 +1394,61 @@ export default function CameraCapture() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-2 text-sm text-foreground/60"
+          className={`flex items-center gap-2 text-sm ${
+            isOffline ? "text-amber-400" : "text-foreground/60"
+          }`}
         >
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-          <span>Prêt à capturer</span>
+          {isOffline ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>Mode hors-ligne - sauvegarde locale</span>
+            </>
+          ) : captureMode === "photo" ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-quantum animate-pulse" />
+              <span>Pret a capturer</span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>Appuyez pour enregistrer (max {MAX_VIDEO_DURATION_SECONDS}s)</span>
+            </>
+          )}
         </motion.div>
+      )}
+
+      {/* Status indicator for recording */}
+      {state === "recording" && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`flex items-center gap-2 text-sm ${
+            isOffline ? "text-amber-400" : "text-red-400"
+          }`}
+        >
+          <motion.span
+            animate={{ opacity: [1, 0.3, 1] }}
+            transition={{ duration: 1, repeat: Infinity }}
+            className={`w-2 h-2 rounded-full ${isOffline ? "bg-amber-500" : "bg-red-500"}`}
+          />
+          <span>
+            {isOffline
+              ? "Enregistrement hors-ligne..."
+              : "Enregistrement en cours..."}
+          </span>
+        </motion.div>
+      )}
+
+      {/* Pending captures list - shown when idle and there are pending captures */}
+      {state === "idle" && pendingCount > 0 && (
+        <div className="w-full max-w-sm">
+          <PendingCapturesList collapsible maxItems={3} />
+        </div>
+      )}
+
+      {/* Offline sync status - shown when idle */}
+      {state === "idle" && !isOffline && pendingCount > 0 && (
+        <OfflineIndicator />
       )}
     </div>
   );

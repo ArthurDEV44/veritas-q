@@ -6,6 +6,7 @@ import "./globals.css";
 import InstallBanner from "@/components/InstallBanner";
 import PWAStatus from "@/components/PWAStatus";
 import Header from "@/components/Header";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -65,35 +66,37 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider localization={frFR}>
-      <html lang="fr" className="dark">
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen`}
-        >
-          <div className="flex flex-col min-h-screen">
-            <Header />
+      <QueryProvider>
+        <html lang="fr" className="dark">
+          <body
+            className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen`}
+          >
+            <div className="flex flex-col min-h-screen">
+              <Header />
 
-            {/* Main content area */}
-            <main className="flex-1 flex flex-col">
-              <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
-                {children}
-              </div>
-            </main>
+              {/* Main content area */}
+              <main className="flex-1 flex flex-col">
+                <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+                  {children}
+                </div>
+              </main>
 
-            {/* Footer - Hidden on mobile for app-like feel */}
-            <footer className="hidden sm:block border-t border-border bg-surface/50">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                <p className="text-center text-sm text-foreground/40">
-                  Powered by ML-DSA-65 Post-Quantum Signatures
-                </p>
-              </div>
-            </footer>
-          </div>
+              {/* Footer - Hidden on mobile for app-like feel */}
+              <footer className="hidden sm:block border-t border-border bg-surface/50">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                  <p className="text-center text-sm text-foreground/40">
+                    Powered by ML-DSA-65 Post-Quantum Signatures
+                  </p>
+                </div>
+              </footer>
+            </div>
 
-          {/* PWA Components */}
-          <PWAStatus />
-          <InstallBanner />
-        </body>
-      </html>
+            {/* PWA Components */}
+            <PWAStatus />
+            <InstallBanner />
+          </body>
+        </html>
+      </QueryProvider>
     </ClerkProvider>
   );
 }

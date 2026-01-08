@@ -25,6 +25,7 @@ import {
   truncateHash,
   getConfidenceLevel,
 } from "@/lib/verification";
+import SealBadge from "@/components/SealBadge";
 
 interface VerificationResultProps {
   result: UnifiedVerificationResult;
@@ -113,6 +114,22 @@ function ClassicResult({
       >
         {success ? "AUTHENTIQUE" : "INVALIDE"}
       </h2>
+      {/* SealBadge for valid verifications */}
+      {success && (
+        <SealBadge
+          status="valid"
+          size="large"
+          clickable={false}
+          trustTier="tier1"
+        />
+      )}
+      {!success && (
+        <SealBadge
+          status="invalid"
+          size="large"
+          clickable={false}
+        />
+      )}
       <p className="text-foreground/60 text-center max-w-sm">{result.details}</p>
     </div>
   );
@@ -158,7 +175,16 @@ function C2paResult({ result }: { result: C2paVerifyResponse }) {
           >
             {c2pa_valid ? "AUTHENTIQUE" : "INVALIDE"}
           </h2>
-          <p className="text-foreground/60 text-sm mt-1">
+          {/* SealBadge for C2PA verification */}
+          <div className="mt-3">
+            <SealBadge
+              status={c2pa_valid ? "valid" : "invalid"}
+              size="medium"
+              clickable={false}
+              trustTier="tier1"
+            />
+          </div>
+          <p className="text-foreground/60 text-sm mt-2">
             Manifest C2PA {c2pa_valid ? "valide" : "invalide"}
           </p>
         </div>
@@ -294,8 +320,19 @@ function SoftBindingResult({ result }: { result: ResolveResponse }) {
           <Search className="w-16 h-16 text-amber-500" />
         </motion.div>
         <div className="text-center">
-          <h2 className="text-xl font-bold text-amber-500">SCEAU RETROUVÉ</h2>
-          <p className="text-foreground/60 text-sm mt-1">
+          <h2 className="text-xl font-bold text-amber-500">SCEAU RETROUVE</h2>
+          {/* SealBadge for found seals - show as tampered if distance > 0 */}
+          <div className="mt-3">
+            <SealBadge
+              sealId={bestMatch.seal_id}
+              status={bestMatch.hamming_distance > 0 ? "tampered" : "valid"}
+              size="medium"
+              clickable={true}
+              showExternalIcon={true}
+              trustTier="tier1"
+            />
+          </div>
+          <p className="text-foreground/60 text-sm mt-2">
             via hash perceptuel
           </p>
         </div>

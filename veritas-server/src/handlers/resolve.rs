@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use veritas_core::compute_phash;
 
-use crate::db::UserRepository;
+use crate::db::{SealRepository, UserRepository};
 use crate::error::ApiError;
 use crate::manifest_store::PostgresManifestStore;
 
@@ -102,6 +102,8 @@ pub struct AppState {
     pub manifest_store: Option<Arc<PostgresManifestStore>>,
     /// User repository for user data
     pub user_repo: Option<Arc<UserRepository>>,
+    /// Seal repository for authenticated seal storage
+    pub seal_repo: Option<Arc<SealRepository>>,
 }
 
 /// Resolve a seal by perceptual hash similarity.

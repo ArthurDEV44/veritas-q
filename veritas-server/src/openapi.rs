@@ -4,8 +4,10 @@
 
 use utoipa::OpenApi;
 
+use crate::db::{SealListResponse, SealMetadata, SealRecord, TrustTier};
 use crate::handlers::{
-    HealthResponse, ReadyResponse, ResolveMatch, ResolveRequest, ResolveResponse, SealResponse,
+    C2paExportResponse, ExportResponse, HealthResponse, JsonExportResponse, ReadyResponse,
+    ResolveMatch, ResolveRequest, ResolveResponse, SealDetailResponse, SealResponse,
     VerifyResponse,
 };
 use crate::webauthn::{
@@ -60,6 +62,7 @@ Veritas Q provides **unforgeable digital seals** for media content using:
     ),
     tags(
         (name = "Sealing", description = "Create quantum-authenticated seals for media content"),
+        (name = "Seals", description = "List, retrieve, and export user's seals with C2PA interoperability"),
         (name = "Resolution", description = "Resolve seals by perceptual hash similarity (soft binding)"),
         (name = "Verification", description = "Verify seals against content to detect tampering"),
         (name = "WebAuthn", description = "Device attestation via WebAuthn/FIDO2 for hardware-backed authentication"),
@@ -72,6 +75,9 @@ Veritas Q provides **unforgeable digital seals** for media content using:
         crate::handlers::seal::seal_handler,
         crate::handlers::resolve::resolve_handler,
         crate::handlers::verify::verify_handler,
+        crate::handlers::seals::list_user_seals_handler,
+        crate::handlers::seals::get_user_seal_handler,
+        crate::handlers::seals::export_seal_handler,
         crate::webauthn::handlers::start_registration,
         crate::webauthn::handlers::finish_registration,
         crate::webauthn::handlers::start_authentication,
@@ -86,6 +92,17 @@ Veritas Q provides **unforgeable digital seals** for media content using:
             ResolveResponse,
             ResolveMatch,
             VerifyResponse,
+            // Seal list and detail
+            SealRecord,
+            SealListResponse,
+            SealMetadata,
+            SealDetailResponse,
+            TrustTier,
+            // Export
+            ExportResponse,
+            JsonExportResponse,
+            C2paExportResponse,
+            // WebAuthn
             StartRegistrationRequest,
             StartAuthenticationRequest,
             DeviceAttestationResponse,
