@@ -6,13 +6,9 @@
 //! ## Supported Providers
 //!
 //! - `AnuQrng` - Australian National University (development)
+//! - `LfdQrng` - LfD Germany (default fallback, free)
 //! - `IdQuantiqueQrng` - ID Quantique (production)
 //! - `MockQrng` - Deterministic mock (testing only)
-//!
-//! ## QRNG Open API Compliance
-//!
-//! Based on the Palo Alto Networks QRNG Open API Framework (2025).
-//! See: <https://github.com/PaloAltoNetworks/QRNG-OPENAPI>
 
 use std::sync::Arc;
 
@@ -42,7 +38,7 @@ pub enum QrngProviderConfig {
 }
 
 /// Configuration for ID Quantique QRNG.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IdQuantiqueConfig {
     /// API base URL
     pub api_url: String,
@@ -52,6 +48,17 @@ pub struct IdQuantiqueConfig {
     pub timeout: std::time::Duration,
     /// Maximum retry attempts
     pub max_retries: u32,
+}
+
+impl std::fmt::Debug for IdQuantiqueConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IdQuantiqueConfig")
+            .field("api_url", &self.api_url)
+            .field("api_key", &"[REDACTED]")
+            .field("timeout", &self.timeout)
+            .field("max_retries", &self.max_retries)
+            .finish()
+    }
 }
 
 impl IdQuantiqueConfig {
@@ -147,13 +154,11 @@ impl QrngProviderFactory {
     /// 1. ID Quantique (if QRNG_API_KEY is set)
     /// 2. LfD QRNG (Germany, free, backed by ID Quantique hardware)
     fn create_auto() -> Result<Arc<dyn QuantumEntropySource>> {
-        // Try ID Quantique first (production)
         if let Ok(idq_config) = IdQuantiqueConfig::from_env() {
             tracing::info!("Auto-selected ID Quantique QRNG provider");
             return Self::create(QrngProviderConfig::IdQuantique(idq_config));
         }
 
-        // Fall back to LfD (Germany, free)
         tracing::info!("Auto-selected LfD QRNG provider (Germany)");
         Self::create(QrngProviderConfig::Lfd(LfdQrngConfig::default()))
     }
@@ -169,10 +174,13 @@ impl QrngProviderFactory {
 // =============================================================================
 
 use async_trait::async_trait;
+use backoff::{future::retry_notify, ExponentialBackoff};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, instrument, warn};
+
+use super::http_client::is_transient_error;
 
 /// ID Quantique QRNG client implementing the QRNG Open API.
 pub struct IdQuantiqueQrng {
@@ -200,9 +208,6 @@ struct EntropyResponse {
 #[derive(Debug, Deserialize)]
 struct CapabilitiesResponse {
     entropy: EntropyCapabilities,
-    #[serde(default)]
-    #[allow(dead_code)]
-    source_count: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -227,12 +232,10 @@ struct HealthResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct HealthTestResult {
-    test_type: String,
-    result: String,
     #[serde(default)]
-    timestamp: Option<String>,
+    _test_type: String,
+    result: String,
 }
 
 impl IdQuantiqueQrng {
@@ -305,7 +308,6 @@ impl IdQuantiqueQrng {
                     VeritasError::QrngError(format!("Failed to parse health response: {e}"))
                 })?;
 
-                // Check if any test failed
                 let failed = health
                     .test_result
                     .iter()
@@ -328,8 +330,10 @@ impl IdQuantiqueQrng {
         }
     }
 
-    /// Fetch entropy with retry logic.
-    async fn fetch_entropy_internal(&self) -> Result<[u8; 32]> {
+    /// Fetch entropy (single attempt).
+    async fn fetch_entropy_once(
+        &self,
+    ) -> std::result::Result<[u8; 32], backoff::Error<VeritasError>> {
         let url = format!("{}/entropy", self.config.api_url);
         let start = Instant::now();
 
@@ -349,33 +353,47 @@ impl IdQuantiqueQrng {
             .map_err(|e| {
                 let latency_ms = start.elapsed().as_millis();
                 warn!(error = %e, latency_ms = latency_ms as u64, "Entropy request failed");
-                VeritasError::QrngError(format!("Entropy request failed: {e}"))
+                if is_transient_error(&e) {
+                    backoff::Error::transient(VeritasError::QrngError(format!(
+                        "Transient error (will retry): {e}"
+                    )))
+                } else {
+                    backoff::Error::permanent(VeritasError::QrngError(format!(
+                        "Entropy request failed: {e}"
+                    )))
+                }
             })?;
 
         if !response.status().is_success() {
-            return Err(VeritasError::QrngError(format!(
-                "Entropy returned status: {}",
-                response.status()
-            )));
+            let status = response.status();
+            let err = VeritasError::QrngError(format!("Entropy returned status: {status}"));
+            return if super::http_client::is_transient_status(status) {
+                Err(backoff::Error::transient(err))
+            } else {
+                Err(backoff::Error::permanent(err))
+            };
         }
 
-        let entropy_response: EntropyResponse = response
-            .json()
-            .await
-            .map_err(|e| VeritasError::QrngError(format!("Failed to parse entropy: {e}")))?;
+        let entropy_response: EntropyResponse = response.json().await.map_err(|e| {
+            backoff::Error::permanent(VeritasError::QrngError(format!(
+                "Failed to parse entropy: {e}"
+            )))
+        })?;
 
         if entropy_response.entropy.is_empty() {
-            return Err(VeritasError::QrngError("Empty entropy response".into()));
+            return Err(backoff::Error::permanent(VeritasError::QrngError(
+                "Empty entropy response".into(),
+            )));
         }
 
-        // Decode base64 entropy
-        let bytes = base64_decode(&entropy_response.entropy[0])?;
+        let bytes =
+            base64_decode(&entropy_response.entropy[0]).map_err(backoff::Error::permanent)?;
 
         if bytes.len() != 32 {
-            return Err(VeritasError::QrngError(format!(
+            return Err(backoff::Error::permanent(VeritasError::QrngError(format!(
                 "Expected 32 bytes, got {}",
                 bytes.len()
-            )));
+            ))));
         }
 
         let mut result = [0u8; 32];
@@ -410,45 +428,38 @@ impl QuantumEntropySource for IdQuantiqueQrng {
         let start = Instant::now();
         debug!("Fetching quantum entropy from ID Quantique");
 
-        // Simple retry with backoff
-        let mut last_error = None;
-        let mut delay = Duration::from_millis(100);
+        let backoff = ExponentialBackoff {
+            initial_interval: Duration::from_millis(100),
+            max_interval: Duration::from_secs(2),
+            max_elapsed_time: Some(self.config.timeout * self.config.max_retries),
+            ..Default::default()
+        };
 
-        for attempt in 1..=self.config.max_retries {
-            match self.fetch_entropy_internal().await {
-                Ok(entropy) => {
-                    let total_ms = start.elapsed().as_millis();
-                    info!(
-                        total_latency_ms = total_ms as u64,
-                        attempts = attempt,
-                        "Successfully fetched quantum entropy"
-                    );
-                    return Ok(entropy);
-                }
-                Err(e) => {
-                    warn!(
-                        error = %e,
-                        attempt = attempt,
-                        max_retries = self.config.max_retries,
-                        "Entropy fetch failed, retrying"
-                    );
-                    last_error = Some(e);
+        let result = retry_notify(
+            backoff,
+            || async { self.fetch_entropy_once().await },
+            |err: VeritasError, duration: Duration| {
+                warn!(
+                    error = %err,
+                    retry_after_ms = duration.as_millis() as u64,
+                    "Retry scheduled"
+                );
+            },
+        )
+        .await;
 
-                    if attempt < self.config.max_retries {
-                        tokio::time::sleep(delay).await;
-                        delay = std::cmp::min(delay * 2, Duration::from_secs(2));
-                    }
-                }
+        let total_ms = start.elapsed().as_millis();
+        match &result {
+            Ok(_) => info!(
+                total_latency_ms = total_ms as u64,
+                "Successfully fetched quantum entropy"
+            ),
+            Err(e) => {
+                warn!(error = %e, total_latency_ms = total_ms as u64, "Failed to fetch entropy after all retries")
             }
         }
 
-        let total_ms = start.elapsed().as_millis();
-        warn!(
-            total_latency_ms = total_ms as u64,
-            "Failed to fetch entropy after all retries"
-        );
-
-        Err(last_error.unwrap_or_else(|| VeritasError::QrngError("Unknown error".into())))
+        result
     }
 
     fn source_id(&self) -> QrngSource {

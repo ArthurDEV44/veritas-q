@@ -58,9 +58,12 @@ pub use seal::{
 #[cfg(feature = "network")]
 pub use seal::SealBuilder;
 
+// MockQrng is always available (no network dependency needed)
+pub use qrng::MockQrng;
+
 // Network-dependent exports (not available in Wasm)
 #[cfg(feature = "network")]
-pub use qrng::{AnuQrng, LfdQrng, MockQrng, QuantumEntropySource};
+pub use qrng::{AnuQrng, LfdQrng, QuantumEntropySource};
 
 // Perceptual hashing exports (soft binding)
 #[cfg(feature = "perceptual-hash")]

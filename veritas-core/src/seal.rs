@@ -25,17 +25,20 @@ pub const MLDSA65_SIGNATURE_BYTES: usize = 3309;
 
 /// Wrapper for ML-DSA-65 secret key that zeroizes memory on drop.
 ///
-/// This ensures secret key material is securely erased from memory
-/// when it goes out of scope, preventing potential leakage.
-///
 /// # Security
 ///
-/// The secret key bytes are stored in a separate Vec that is explicitly
-/// zeroized when the wrapper is dropped. This provides defense-in-depth
-/// even though the original key struct may still contain the key data.
+/// Uses `unsafe` to obtain mutable access to the key's backing memory
+/// for zeroization. This is necessary because `pqcrypto-mldsa` does not
+/// expose a `as_bytes_mut()` method on `SecretKey`.
+///
+/// # Safety
+///
+/// The unsafe block reinterprets the immutable key bytes as mutable for
+/// zeroization only during `Drop`. This is safe because:
+/// 1. We have exclusive (`&mut self`) access during Drop
+/// 2. The key will not be used after Drop completes
+/// 3. The zeroize operation does not change the type or layout
 pub struct ZeroizingSecretKey {
-    /// Copy of secret key bytes that will be zeroized on drop
-    bytes: Vec<u8>,
     /// The actual key used for signing operations
     key: mldsa65::SecretKey,
 }
@@ -43,8 +46,7 @@ pub struct ZeroizingSecretKey {
 impl ZeroizingSecretKey {
     /// Create a new zeroizing wrapper from an ML-DSA-65 secret key.
     pub fn new(key: mldsa65::SecretKey) -> Self {
-        let bytes = key.as_bytes().to_vec();
-        Self { bytes, key }
+        Self { key }
     }
 
     /// Get a reference to the underlying secret key for signing.
@@ -55,7 +57,17 @@ impl ZeroizingSecretKey {
 
 impl Drop for ZeroizingSecretKey {
     fn drop(&mut self) {
-        self.bytes.zeroize();
+        // SAFETY: We have exclusive &mut self access during Drop.
+        // The key bytes pointer is valid for the key's lifetime and we are
+        // the sole owner. After Drop, the memory is freed anyway, but we
+        // zeroize to prevent the key lingering in freed memory pages.
+        let key_bytes = self.key.as_bytes();
+        let len = key_bytes.len();
+        let ptr = key_bytes.as_ptr() as *mut u8;
+        unsafe {
+            let slice = std::slice::from_raw_parts_mut(ptr, len);
+            slice.zeroize();
+        }
     }
 }
 
@@ -63,7 +75,7 @@ impl Drop for ZeroizingSecretKey {
 impl std::fmt::Debug for ZeroizingSecretKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ZeroizingSecretKey")
-            .field("bytes", &"[REDACTED]")
+            .field("key", &"[REDACTED]")
             .finish()
     }
 }
@@ -319,7 +331,7 @@ impl SealBuilder {
     /// Build and sign the seal using the provided QRNG source and signing key.
     ///
     /// Accepts either a raw `mldsa65::SecretKey` or a `ZeroizingSecretKey` wrapper.
-    pub async fn build<Q: QuantumEntropySource>(
+    pub async fn build<Q: QuantumEntropySource + ?Sized>(
         self,
         qrng: &Q,
         secret_key: &mldsa65::SecretKey,
@@ -333,6 +345,10 @@ impl SealBuilder {
 
         // Fetch quantum entropy
         let qrng_entropy = qrng.get_entropy().await?;
+
+        // Validate entropy quality (reject degenerate patterns)
+        crate::qrng::validate_entropy(&qrng_entropy)?;
+
         let entropy_timestamp = u64::try_from(Utc::now().timestamp_millis()).map_err(|_| {
             VeritasError::InvalidTimestamp {
                 reason: "entropy timestamp before Unix epoch".into(),
@@ -404,7 +420,7 @@ impl SealBuilder {
     ///
     /// This is the recommended method as it ensures the secret key is
     /// securely erased from memory when the wrapper is dropped.
-    pub async fn build_secure<Q: QuantumEntropySource>(
+    pub async fn build_secure<Q: QuantumEntropySource + ?Sized>(
         self,
         qrng: &Q,
         secret_key: &ZeroizingSecretKey,
