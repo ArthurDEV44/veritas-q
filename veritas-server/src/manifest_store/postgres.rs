@@ -1,7 +1,6 @@
 //! PostgreSQL implementation of the manifest store.
 
 use chrono::{DateTime, Utc};
-use sqlx::postgres::PgPoolOptions;
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
@@ -42,28 +41,9 @@ impl From<ManifestRow> for ManifestRecord {
 }
 
 impl PostgresManifestStore {
-    /// Create a new manifest store with the given database URL.
+    /// Create a manifest store from an existing shared pool.
     ///
-    /// Runs migrations automatically on connection.
-    pub async fn new(database_url: &str) -> Result<Self, ManifestStoreError> {
-        let pool = PgPoolOptions::new()
-            .max_connections(10)
-            .connect(database_url)
-            .await
-            .map_err(|e| ManifestStoreError::Connection(e.to_string()))?;
-
-        // Run migrations
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .map_err(|e| ManifestStoreError::Migration(e.to_string()))?;
-
-        tracing::info!("Manifest store connected and migrations applied");
-
-        Ok(Self { pool })
-    }
-
-    /// Create a manifest store from an existing pool (for testing).
+    /// The caller is responsible for running migrations on the pool before use.
     pub fn from_pool(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -139,9 +119,11 @@ impl PostgresManifestStore {
     /// Uses Hamming distance to measure similarity. A distance of 0 means
     /// identical hashes, while higher values indicate less similarity.
     ///
+    /// PostgreSQL 14+ implementation using server-side bit_count() for performance.
+    ///
     /// # Arguments
     ///
-    /// * `phash` - The perceptual hash to search for (typically 8 bytes, but legacy 5-byte hashes are supported)
+    /// * `phash` - The perceptual hash to search for (typically 8 bytes)
     /// * `threshold` - Maximum Hamming distance to consider a match (typically 10-15)
     /// * `limit` - Maximum number of results to return
     ///
@@ -161,44 +143,60 @@ impl PostgresManifestStore {
             )));
         }
 
-        // PostgreSQL 14+ has bit_count() for bytea XOR result
-        // For older versions, we compute Hamming distance in application layer
-        // Here we use a hybrid approach: fetch candidates and filter
-        let rows: Vec<ManifestRow> = sqlx::query_as(
+        let phash_len = phash.len() as i32;
+
+        // Use PostgreSQL bit_count() to compute Hamming distance on the server.
+        // Only compare hashes of the same length to avoid conversion complexity.
+        // The XOR operator (#) works on bit/bit varying types.
+        #[derive(FromRow)]
+        struct SimilarityRow {
+            id: Uuid,
+            seal_id: String,
+            perceptual_hash: Option<Vec<u8>>,
+            image_hash: String,
+            seal_cbor: Vec<u8>,
+            media_type: String,
+            created_at: DateTime<Utc>,
+            hamming_distance: i32,
+        }
+
+        let rows: Vec<SimilarityRow> = sqlx::query_as(
             r#"
-            SELECT id, seal_id, perceptual_hash, image_hash, seal_cbor, media_type, created_at
+            SELECT id, seal_id, perceptual_hash, image_hash, seal_cbor, media_type, created_at,
+                   bit_count(perceptual_hash::bit varying # $1::bit varying) as hamming_distance
             FROM manifests
             WHERE perceptual_hash IS NOT NULL
-            ORDER BY created_at DESC
-            LIMIT 1000
+              AND length(perceptual_hash) = $2
+              AND bit_count(perceptual_hash::bit varying # $1::bit varying) <= $3
+            ORDER BY hamming_distance ASC
+            LIMIT $4
             "#,
         )
+        .bind(phash)
+        .bind(phash_len)
+        .bind(threshold as i32)
+        .bind(limit as i64)
         .fetch_all(&self.pool)
         .await?;
 
-        // Compute Hamming distance in Rust (more portable than SQL bit_count)
-        let mut matches: Vec<SimilarityMatch> = rows
+        let matches: Vec<SimilarityMatch> = rows
             .into_iter()
-            .filter_map(|row| {
-                let stored_hash = row.perceptual_hash.as_ref()?;
-                let distance = hamming_distance_bytes(phash, stored_hash);
-
-                if distance <= threshold {
-                    Some(SimilarityMatch {
-                        record: row.into(),
-                        hamming_distance: distance,
-                    })
-                } else {
-                    None
+            .map(|row| {
+                let record = ManifestRecord {
+                    id: row.id,
+                    seal_id: row.seal_id,
+                    perceptual_hash: row.perceptual_hash,
+                    image_hash: row.image_hash,
+                    seal_cbor: row.seal_cbor,
+                    media_type: row.media_type,
+                    created_at: row.created_at,
+                };
+                SimilarityMatch {
+                    record,
+                    hamming_distance: row.hamming_distance as u32,
                 }
             })
             .collect();
-
-        // Sort by distance (closest first)
-        matches.sort_by_key(|m| m.hamming_distance);
-
-        // Limit results
-        matches.truncate(limit);
 
         Ok(matches)
     }
@@ -223,12 +221,15 @@ impl PostgresManifestStore {
     }
 }
 
-/// Compute Hamming distance between two byte slices.
+/// Compute Hamming distance between two byte slices (fallback utility).
 ///
 /// Supports comparing hashes of different sizes for backwards compatibility.
 /// When sizes differ, compares the overlapping portion and adds a penalty
 /// of 8 bits per byte of size difference.
-fn hamming_distance_bytes(a: &[u8], b: &[u8]) -> u32 {
+///
+/// NOTE: The primary `find_similar` uses PostgreSQL 14+ bit_count() for performance.
+/// This function is kept as a fallback utility.
+pub fn hamming_distance_bytes(a: &[u8], b: &[u8]) -> u32 {
     if a.is_empty() || b.is_empty() {
         return u32::MAX;
     }

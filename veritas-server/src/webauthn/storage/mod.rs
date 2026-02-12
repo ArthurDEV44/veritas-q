@@ -72,6 +72,16 @@ impl WebAuthnStorage {
         })
     }
 
+    /// Create storage with PostgreSQL backend from an existing shared pool.
+    ///
+    /// The caller is responsible for running migrations on the pool before use.
+    pub fn from_pool(pool: sqlx::PgPool) -> Self {
+        Self {
+            challenges: ChallengeStore::new(),
+            credentials: CredentialBackend::Postgres(PostgresCredentialStore::from_pool(pool)),
+        }
+    }
+
     /// Create storage with in-memory backend (development only)
     pub fn in_memory() -> Self {
         tracing::warn!("Using in-memory credential storage - credentials will be lost on restart!");

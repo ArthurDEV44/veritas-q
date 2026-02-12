@@ -3,16 +3,20 @@
 //! This library exposes the server components for use in integration tests.
 //! The main binary uses these same components.
 
+pub mod auth;
 pub mod config;
 pub mod db;
 pub mod error;
 pub mod handlers;
 pub mod manifest_store;
+pub mod multipart;
 pub mod openapi;
 pub mod routes;
+pub mod state;
 pub mod validation;
 pub mod webauthn;
 
+pub use auth::{AuthenticatedUser, JwksCache, JwtClaims, OptionalAuth};
 pub use config::Config;
 pub use db::{
     CreateSeal, CreateUser, DeviceInfo, Seal, SealListParams, SealListResponse, SealLocation,

@@ -2,10 +2,11 @@
 //!
 //! Handles user profile synchronization from Clerk authentication.
 
-use axum::{extract::State, http::HeaderMap, Json};
+use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::auth::{AuthenticatedUser, JwtClaims};
 use crate::db::{CreateUser, UserResponse};
 use crate::error::ApiError;
 use crate::handlers::AppState;
@@ -62,15 +63,15 @@ pub struct SyncUserResponse {
 )]
 pub async fn sync_user_handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    jwt: JwtClaims,
     Json(request): Json<SyncUserRequest>,
 ) -> Result<Json<SyncUserResponse>, ApiError> {
-    // Validate authorization header exists
-    // Note: Full Clerk token validation should be done in middleware
-    // This is a basic check to ensure the request has auth
-    let _auth = headers
-        .get("authorization")
-        .ok_or_else(|| ApiError::unauthorized("Missing authorization header"))?;
+    // JWT is validated — verify the request matches the authenticated user
+    if request.clerk_user_id != jwt.clerk_user_id {
+        return Err(ApiError::unauthorized(
+            "Request clerk_user_id does not match authenticated user",
+        ));
+    }
 
     // Get user repository
     let user_repo = state
@@ -80,9 +81,12 @@ pub async fn sync_user_handler(
 
     // Check if user already exists
     let existing = user_repo
-        .find_by_clerk_id(&request.clerk_user_id)
+        .find_by_clerk_id(&jwt.clerk_user_id)
         .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to look up user");
+            ApiError::internal("A database error occurred")
+        })?;
 
     let created = existing.is_none();
 
@@ -95,7 +99,10 @@ pub async fn sync_user_handler(
             avatar_url: request.avatar_url,
         })
         .await
-        .map_err(|e| ApiError::internal(format!("Failed to sync user: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to sync user");
+            ApiError::internal("A database error occurred")
+        })?;
 
     Ok(Json(SyncUserResponse {
         created,
@@ -137,30 +144,10 @@ pub struct DeleteUserResponse {
     )
 )]
 pub async fn get_current_user_handler(
-    State(state): State<AppState>,
-    headers: HeaderMap,
+    auth: AuthenticatedUser,
 ) -> Result<Json<CurrentUserResponse>, ApiError> {
-    // Get clerk_user_id from header (set by auth middleware)
-    let clerk_user_id = headers
-        .get("x-clerk-user-id")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::unauthorized("Missing x-clerk-user-id header"))?;
-
-    // Get user repository
-    let user_repo = state
-        .user_repo
-        .as_ref()
-        .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
-
-    // Find user
-    let user = user_repo
-        .find_by_clerk_id(clerk_user_id)
-        .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
-
     Ok(Json(CurrentUserResponse {
-        user: UserResponse::from(user),
+        user: UserResponse::from(auth.user),
     }))
 }
 
@@ -187,37 +174,24 @@ pub async fn get_current_user_handler(
 )]
 pub async fn delete_user_handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    auth: AuthenticatedUser,
 ) -> Result<Json<DeleteUserResponse>, ApiError> {
-    // Get clerk_user_id from header (set by auth middleware)
-    let clerk_user_id = headers
-        .get("x-clerk-user-id")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::unauthorized("Missing x-clerk-user-id header"))?;
-
     // Get user repository
     let user_repo = state
         .user_repo
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
 
-    // Find user first to get their internal ID
-    let user = user_repo
-        .find_by_clerk_id(clerk_user_id)
-        .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
-
-    // Soft delete the user
-    let deleted = user_repo
-        .soft_delete(user.id)
-        .await
-        .map_err(|e| ApiError::internal(format!("Failed to delete user: {}", e)))?;
+    // Soft delete the user (PII is anonymized in the query)
+    let deleted = user_repo.soft_delete(auth.user.id).await.map_err(|e| {
+        tracing::error!(error = %e, "Failed to delete user");
+        ApiError::internal("A database error occurred")
+    })?;
 
     if deleted {
         tracing::info!(
-            user_id = %user.id,
-            clerk_user_id = %clerk_user_id,
+            user_id = %auth.user.id,
+            clerk_user_id = %auth.clerk_user_id,
             "User account soft deleted (GDPR)"
         );
 

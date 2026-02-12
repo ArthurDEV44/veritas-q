@@ -25,6 +25,14 @@ pub struct Config {
     pub rate_limit_per_sec: u64,
     /// Rate limit: burst size (default: 20)
     pub rate_limit_burst: u32,
+    /// Clerk JWKS URL for JWT validation (enables JWT auth when set)
+    pub clerk_jwks_url: Option<String>,
+    /// Allow mock QRNG usage (default: false, enable with ALLOW_MOCK_QRNG=true)
+    pub allow_mock_qrng: bool,
+    /// Database connection pool maximum connections (default: 20)
+    pub database_max_connections: u32,
+    /// Database connection pool minimum connections (default: 2)
+    pub database_min_connections: u32,
 }
 
 impl Default for Config {
@@ -39,6 +47,10 @@ impl Default for Config {
             rate_limit_enabled: false, // Disabled by default (for tests)
             rate_limit_per_sec: 10,
             rate_limit_burst: 20,
+            clerk_jwks_url: None,
+            allow_mock_qrng: true, // Enabled by default for tests; from_env() defaults to false
+            database_max_connections: 20,
+            database_min_connections: 2,
         }
     }
 }
@@ -100,6 +112,22 @@ impl Config {
             .map(|v| v.to_lowercase() != "false")
             .unwrap_or(true);
 
+        let clerk_jwks_url = std::env::var("CLERK_JWKS_URL").ok();
+
+        let allow_mock_qrng = std::env::var("ALLOW_MOCK_QRNG")
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false);
+
+        let database_max_connections = std::env::var("DATABASE_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20);
+
+        let database_min_connections = std::env::var("DATABASE_MIN_CONNECTIONS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2);
+
         Self {
             port,
             host,
@@ -110,6 +138,10 @@ impl Config {
             rate_limit_enabled,
             rate_limit_per_sec,
             rate_limit_burst,
+            clerk_jwks_url,
+            allow_mock_qrng,
+            database_max_connections,
+            database_min_connections,
         }
     }
 

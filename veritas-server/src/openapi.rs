@@ -4,17 +4,6 @@
 
 use utoipa::OpenApi;
 
-use crate::db::{SealListResponse, SealMetadata, SealRecord, TrustTier};
-use crate::handlers::{
-    C2paExportResponse, ExportResponse, HealthResponse, JsonExportResponse, ReadyResponse,
-    ResolveMatch, ResolveRequest, ResolveResponse, SealDetailResponse, SealResponse,
-    VerifyResponse,
-};
-use crate::webauthn::{
-    AttestationFormat, AuthenticatorType, DeviceAttestation, DeviceAttestationResponse,
-    DeviceModel, StartAuthenticationRequest, StartRegistrationRequest,
-};
-
 /// Veritas Q Truth API - OpenAPI Documentation
 #[derive(OpenApi)]
 #[openapi(
@@ -85,35 +74,75 @@ Veritas Q provides **unforgeable digital seals** for media content using:
     ),
     components(
         schemas(
-            HealthResponse,
-            ReadyResponse,
-            SealResponse,
-            ResolveRequest,
-            ResolveResponse,
-            ResolveMatch,
-            VerifyResponse,
+            crate::handlers::HealthResponse,
+            crate::handlers::ReadyResponse,
+            crate::handlers::SealResponse,
+            crate::handlers::ResolveRequest,
+            crate::handlers::ResolveResponse,
+            crate::handlers::ResolveMatch,
+            crate::handlers::VerifyResponse,
             // Seal list and detail
-            SealRecord,
-            SealListResponse,
-            SealMetadata,
-            SealDetailResponse,
-            TrustTier,
+            crate::db::SealRecord,
+            crate::db::SealListResponse,
+            crate::db::SealMetadata,
+            crate::handlers::SealDetailResponse,
+            crate::db::TrustTier,
             // Export
-            ExportResponse,
-            JsonExportResponse,
-            C2paExportResponse,
+            crate::handlers::ExportResponse,
+            crate::handlers::JsonExportResponse,
+            crate::handlers::C2paExportResponse,
             // WebAuthn
-            StartRegistrationRequest,
-            StartAuthenticationRequest,
-            DeviceAttestationResponse,
-            DeviceAttestation,
-            DeviceModel,
-            AuthenticatorType,
-            AttestationFormat,
+            crate::webauthn::StartRegistrationRequest,
+            crate::webauthn::StartAuthenticationRequest,
+            crate::webauthn::DeviceAttestationResponse,
+            crate::webauthn::DeviceAttestation,
+            crate::webauthn::DeviceModel,
+            crate::webauthn::AuthenticatorType,
+            crate::webauthn::AttestationFormat,
         )
-    )
+    ),
+    modifiers(&C2paModifier)
 )]
 pub struct ApiDoc;
 
-// Note: C2PA paths would be added here when utoipa supports conditional compilation better
-// For now, they're documented via their own #[utoipa::path] attributes
+/// Modifier to add C2PA paths when the feature is enabled
+struct C2paModifier;
+
+impl utoipa::Modify for C2paModifier {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        #[cfg(feature = "c2pa")]
+        {
+            use utoipa::OpenApi;
+
+            // Merge C2PA paths and components
+            let c2pa_doc = <C2paDoc as OpenApi>::openapi();
+
+            // Merge paths
+            openapi.paths.paths.extend(c2pa_doc.paths.paths);
+
+            // Merge schemas
+            if let Some(components) = openapi.components.as_mut() {
+                if let Some(c2pa_components) = c2pa_doc.components {
+                    components.schemas.extend(c2pa_components.schemas);
+                }
+            }
+        }
+    }
+}
+
+/// C2PA-specific OpenAPI documentation (only compiled when c2pa feature is enabled)
+#[cfg(feature = "c2pa")]
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::handlers::c2pa::c2pa_embed_handler,
+        crate::handlers::c2pa::c2pa_verify_handler,
+    ),
+    components(schemas(
+        crate::handlers::C2paEmbedResponse,
+        crate::handlers::C2paVerifyResponse,
+        crate::handlers::c2pa::QuantumSealInfo,
+        crate::handlers::c2pa::BlockchainAnchorInfo,
+    ))
+)]
+struct C2paDoc;

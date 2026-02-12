@@ -203,18 +203,23 @@ impl UserRepository {
         .await
     }
 
-    /// Soft delete user (GDPR compliance)
+    /// SQL for GDPR-compliant soft delete with PII anonymization (GDPR Article 17)
+    const SOFT_DELETE_SQL: &str = r#"
+        UPDATE users
+        SET
+            email = 'deleted-' || id::text,
+            name = NULL,
+            avatar_url = NULL,
+            deleted_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL
+    "#;
+
+    /// Soft delete user (GDPR compliance - anonymizes PII)
     pub async fn soft_delete(&self, id: Uuid) -> Result<bool, sqlx::Error> {
-        let result = sqlx::query(
-            r#"
-            UPDATE users
-            SET deleted_at = NOW()
-            WHERE id = $1 AND deleted_at IS NULL
-            "#,
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query(Self::SOFT_DELETE_SQL)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -275,5 +280,26 @@ mod tests {
         assert_eq!(response.email, user.email);
         assert_eq!(response.name, user.name);
         assert_eq!(response.tier, user.tier);
+    }
+
+    #[test]
+    fn test_soft_delete_sql_anonymizes_pii() {
+        // Verify that soft_delete SQL includes GDPR-compliant PII anonymization (Article 17)
+        assert!(
+            UserRepository::SOFT_DELETE_SQL.contains("email = 'deleted-' || id::text"),
+            "soft_delete must anonymize email with 'deleted-{{id}}' pattern"
+        );
+        assert!(
+            UserRepository::SOFT_DELETE_SQL.contains("name = NULL"),
+            "soft_delete must clear name field"
+        );
+        assert!(
+            UserRepository::SOFT_DELETE_SQL.contains("avatar_url = NULL"),
+            "soft_delete must clear avatar_url field"
+        );
+        assert!(
+            UserRepository::SOFT_DELETE_SQL.contains("deleted_at = NOW()"),
+            "soft_delete must set deleted_at timestamp"
+        );
     }
 }

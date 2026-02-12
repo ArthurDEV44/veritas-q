@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use sqlx::postgres::PgPoolOptions;
 use tower_governor::{
     governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
 };
@@ -20,6 +21,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use crate::auth::JwksCache;
 use crate::config::Config;
 use crate::db::{SealRepository, UserRepository};
 #[cfg(feature = "c2pa")]
@@ -27,10 +29,11 @@ use crate::handlers::{c2pa_embed_handler, c2pa_verify_handler};
 use crate::handlers::{
     delete_user_handler, export_seal_handler, get_current_user_handler, get_user_seal_handler,
     health, list_user_seals_handler, ready, resolve_handler, seal_handler, sync_user_handler,
-    verify_handler, AppState,
+    verify_handler,
 };
 use crate::manifest_store::PostgresManifestStore;
 use crate::openapi::ApiDoc;
+use crate::state::AppState;
 use crate::webauthn::{
     finish_authentication, finish_registration, start_authentication, start_registration,
     WebAuthnState, WebAuthnStorage,
@@ -44,28 +47,37 @@ pub fn create_router() -> Router {
 
 /// Create the application router with in-memory WebAuthn storage (sync version for tests)
 pub fn create_router_with_config_sync(config: &Config) -> Router {
-    create_router_internal(config, WebAuthnStorage::in_memory(), None, None, None)
+    create_router_internal(config, WebAuthnStorage::in_memory(), None, None, None, None)
 }
 
 /// Create the application router with custom configuration (async version)
 /// Uses PostgreSQL storage if DATABASE_URL is set.
 pub async fn create_router_with_config(config: &Config) -> Router {
-    let storage = WebAuthnStorage::from_env().await.unwrap_or_else(|e| {
-        tracing::warn!(
-            "Failed to initialize WebAuthn storage: {}, using in-memory",
-            e
-        );
-        WebAuthnStorage::in_memory()
-    });
-
     // Initialize stores if DATABASE_URL is set
-    let (manifest_store, user_repo, seal_repo) = match std::env::var("DATABASE_URL") {
+    let (storage, manifest_store, user_repo, seal_repo) = match std::env::var("DATABASE_URL") {
         Ok(url) => {
-            // Create shared pool
-            let pool = match sqlx::PgPool::connect(&url).await {
+            // Create shared pool with configured connection limits
+            let pool = match PgPoolOptions::new()
+                .max_connections(config.database_max_connections)
+                .min_connections(config.database_min_connections)
+                .connect(&url)
+                .await
+            {
                 Ok(pool) => {
-                    tracing::info!("Database pool connected");
-                    Some(pool)
+                    tracing::info!(
+                        "Database pool connected (min: {}, max: {})",
+                        config.database_min_connections,
+                        config.database_max_connections
+                    );
+
+                    // Run migrations
+                    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
+                        tracing::error!("Failed to run migrations: {}", e);
+                        None
+                    } else {
+                        tracing::info!("Database migrations applied");
+                        Some(pool)
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("Failed to connect to database: {}", e);
@@ -73,42 +85,49 @@ pub async fn create_router_with_config(config: &Config) -> Router {
                 }
             };
 
-            // Initialize manifest store
-            let manifest_store = match &pool {
-                Some(_) => match PostgresManifestStore::new(&url).await {
-                    Ok(store) => {
-                        tracing::info!("Manifest store initialized with PostgreSQL");
-                        Some(Arc::new(store))
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to initialize manifest store: {}", e);
-                        None
-                    }
-                },
-                None => None,
-            };
+            // Initialize all components using shared pool
+            let storage = pool
+                .as_ref()
+                .map(|p| WebAuthnStorage::from_pool(p.clone()))
+                .unwrap_or_else(WebAuthnStorage::in_memory);
 
-            // Initialize user repository
+            let manifest_store = pool.as_ref().map(|p| {
+                tracing::info!("Manifest store initialized with shared pool");
+                Arc::new(PostgresManifestStore::from_pool(p.clone()))
+            });
+
             let user_repo = pool.as_ref().map(|p| {
-                tracing::info!("User repository initialized");
+                tracing::info!("User repository initialized with shared pool");
                 Arc::new(UserRepository::new(p.clone()))
             });
 
-            // Initialize seal repository
             let seal_repo = pool.map(|p| {
-                tracing::info!("Seal repository initialized");
+                tracing::info!("Seal repository initialized with shared pool");
                 Arc::new(SealRepository::new(p))
             });
 
-            (manifest_store, user_repo, seal_repo)
+            (storage, manifest_store, user_repo, seal_repo)
         }
         Err(_) => {
             tracing::info!("DATABASE_URL not set, database features disabled");
-            (None, None, None)
+            (WebAuthnStorage::in_memory(), None, None, None)
         }
     };
 
-    create_router_internal(config, storage, manifest_store, user_repo, seal_repo)
+    // Initialize JWKS cache for JWT validation if Clerk JWKS URL is configured
+    let jwks_cache = config.clerk_jwks_url.as_ref().map(|url| {
+        tracing::info!("JWT authentication enabled (CLERK_JWKS_URL set)");
+        Arc::new(JwksCache::new(url.clone()))
+    });
+
+    create_router_internal(
+        config,
+        storage,
+        manifest_store,
+        user_repo,
+        seal_repo,
+        jwks_cache,
+    )
 }
 
 /// Internal router creation with provided storage
@@ -118,6 +137,7 @@ fn create_router_internal(
     manifest_store: Option<Arc<PostgresManifestStore>>,
     user_repo: Option<Arc<UserRepository>>,
     seal_repo: Option<Arc<SealRepository>>,
+    jwks_cache: Option<Arc<JwksCache>>,
 ) -> Router {
     // Configure CORS based on allowed_origins
     let cors = match &config.allowed_origins {
@@ -183,10 +203,12 @@ fn create_router_internal(
         manifest_store,
         user_repo,
         seal_repo,
+        jwks_cache,
+        allow_mock_qrng: config.allow_mock_qrng,
     };
 
-    // Routes that require app state (seal, resolve, users, seals)
-    let stateful_router = Router::new()
+    // Routes that require app state (seal, resolve, users, seals, c2pa)
+    let mut stateful_router = Router::new()
         .route("/seal", post(seal_handler))
         .route("/resolve", post(resolve_handler))
         // User routes (v1 API)
@@ -198,24 +220,25 @@ fn create_router_internal(
         // Seals routes (v1 API) - user's seal history
         .route("/api/v1/seals", get(list_user_seals_handler))
         .route("/api/v1/seals/{seal_id}", get(get_user_seal_handler))
-        .route("/api/v1/seals/{seal_id}/export", get(export_seal_handler))
-        .with_state(app_state);
+        .route("/api/v1/seals/{seal_id}/export", get(export_seal_handler));
+
+    // Add C2PA routes if feature enabled (needs AppState for mock QRNG gating)
+    #[cfg(feature = "c2pa")]
+    {
+        stateful_router = stateful_router
+            .route("/c2pa/embed", post(c2pa_embed_handler))
+            .route("/c2pa/verify", post(c2pa_verify_handler));
+    }
+
+    let stateful_router = stateful_router.with_state(app_state);
 
     // Base router with common layers
-    let mut router = Router::new()
+    let router = Router::new()
         .merge(stateful_router)
         .route("/verify", post(verify_handler))
         .route("/health", get(health))
         .route("/ready", get(ready))
         .nest("/webauthn", webauthn_router);
-
-    // Add C2PA routes if feature enabled
-    #[cfg(feature = "c2pa")]
-    {
-        router = router
-            .route("/c2pa/embed", post(c2pa_embed_handler))
-            .route("/c2pa/verify", post(c2pa_verify_handler));
-    }
 
     let router = router
         // OpenAPI documentation endpoints

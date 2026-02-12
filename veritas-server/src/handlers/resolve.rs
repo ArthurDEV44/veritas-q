@@ -2,17 +2,14 @@
 //!
 //! Handles POST /resolve requests to find seals by perceptual hash similarity.
 
-use std::sync::Arc;
-
 use axum::{extract::State, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use veritas_core::compute_phash;
 
-use crate::db::{SealRepository, UserRepository};
 use crate::error::ApiError;
-use crate::manifest_store::PostgresManifestStore;
+use crate::handlers::AppState;
 
 /// Default similarity threshold (Hamming distance)
 const DEFAULT_THRESHOLD: u32 = 10;
@@ -95,17 +92,6 @@ pub struct ResolveMatch {
     pub seal_data: Option<String>,
 }
 
-/// Application state containing shared resources.
-#[derive(Clone)]
-pub struct AppState {
-    /// Manifest store for seal storage and resolution
-    pub manifest_store: Option<Arc<PostgresManifestStore>>,
-    /// User repository for user data
-    pub user_repo: Option<Arc<UserRepository>>,
-    /// Seal repository for authenticated seal storage
-    pub seal_repo: Option<Arc<SealRepository>>,
-}
-
 /// Resolve a seal by perceptual hash similarity.
 ///
 /// This endpoint enables "soft binding" resolution: finding the original
@@ -174,7 +160,10 @@ pub async fn resolve_handler(
     let matches = store
         .find_similar(&phash_bytes, threshold, limit)
         .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to search for similar manifests");
+            ApiError::internal("A database error occurred")
+        })?;
 
     // Convert to response format
     let response_matches: Vec<ResolveMatch> = matches

@@ -4,13 +4,13 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::HeaderMap,
     Json,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::auth::AuthenticatedUser;
 use crate::db::{SealListParams, SealListResponse, SealRecord, TrustTier};
 use crate::error::ApiError;
 use crate::handlers::AppState;
@@ -79,39 +79,22 @@ pub struct SealDetailResponse {
 )]
 pub async fn list_user_seals_handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    auth: AuthenticatedUser,
     Query(query): Query<ListSealsQuery>,
 ) -> Result<Json<SealListResponse>, ApiError> {
-    // Get clerk_user_id from header
-    let clerk_user_id = headers
-        .get("x-clerk-user-id")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::unauthorized("Missing x-clerk-user-id header"))?;
-
-    // Get repositories
-    let user_repo = state
-        .user_repo
-        .as_ref()
-        .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
-
     let seal_repo = state
         .seal_repo
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
 
-    // Find user to get internal ID
-    let user = user_repo
-        .find_by_clerk_id(clerk_user_id)
-        .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
-
-    // Get seals
     let params = SealListParams::from(query);
     let response = seal_repo
-        .list_for_user(user.id, &params)
+        .list_for_user(auth.user.id, &params)
         .await
-        .map_err(|e| ApiError::internal(format!("Failed to list seals: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to list seals");
+            ApiError::internal("A database error occurred")
+        })?;
 
     Ok(Json(response))
 }
@@ -138,38 +121,22 @@ pub async fn list_user_seals_handler(
 )]
 pub async fn get_user_seal_handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    auth: AuthenticatedUser,
     Path(seal_id): Path<Uuid>,
 ) -> Result<Json<SealDetailResponse>, ApiError> {
-    // Get clerk_user_id from header
-    let clerk_user_id = headers
-        .get("x-clerk-user-id")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::unauthorized("Missing x-clerk-user-id header"))?;
-
-    // Get repositories
-    let user_repo = state
-        .user_repo
-        .as_ref()
-        .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
-
     let seal_repo = state
         .seal_repo
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
 
-    // Find user to get internal ID
-    let user = user_repo
-        .find_by_clerk_id(clerk_user_id)
-        .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
-
     // Get seal (restricted to user's seals)
     let seal = seal_repo
-        .find_by_id_for_user(seal_id, user.id)
+        .find_by_id_for_user(seal_id, auth.user.id)
         .await
-        .map_err(|e| ApiError::internal(format!("Failed to get seal: {}", e)))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get seal");
+            ApiError::internal("A database error occurred")
+        })?
         .ok_or_else(|| ApiError::not_found("Seal not found"))?;
 
     Ok(Json(SealDetailResponse {
@@ -380,39 +347,23 @@ pub enum ExportResponse {
 )]
 pub async fn export_seal_handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    auth: AuthenticatedUser,
     Path(seal_id): Path<Uuid>,
     Query(query): Query<ExportSealQuery>,
 ) -> Result<Json<ExportResponse>, ApiError> {
-    // Get clerk_user_id from header
-    let clerk_user_id = headers
-        .get("x-clerk-user-id")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::unauthorized("Missing x-clerk-user-id header"))?;
-
-    // Get repositories
-    let user_repo = state
-        .user_repo
-        .as_ref()
-        .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
-
     let seal_repo = state
         .seal_repo
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("Database not configured"))?;
 
-    // Find user to get internal ID
-    let user = user_repo
-        .find_by_clerk_id(clerk_user_id)
-        .await
-        .map_err(|e| ApiError::internal(format!("Database error: {}", e)))?
-        .ok_or_else(|| ApiError::not_found("User not found"))?;
-
     // Get seal (restricted to user's seals)
     let seal = seal_repo
-        .find_by_id_for_user(seal_id, user.id)
+        .find_by_id_for_user(seal_id, auth.user.id)
         .await
-        .map_err(|e| ApiError::internal(format!("Failed to get seal: {}", e)))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get seal for export");
+            ApiError::internal("A database error occurred")
+        })?
         .ok_or_else(|| ApiError::not_found("Seal not found"))?;
 
     let format = query.format.unwrap_or_default();

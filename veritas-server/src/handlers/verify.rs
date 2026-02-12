@@ -9,7 +9,8 @@ use utoipa::ToSchema;
 use veritas_core::{ContentVerificationResult, VeritasSeal};
 
 use crate::error::ApiError;
-use crate::validation::{validate_content_type, validate_file_size, DEFAULT_MAX_FILE_SIZE};
+use crate::multipart::MultipartFields;
+use crate::validation::DEFAULT_MAX_FILE_SIZE;
 
 /// Response for verification
 #[derive(Serialize, ToSchema)]
@@ -50,53 +51,20 @@ pub struct VerifyResponse {
     )
 )]
 pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyResponse>, ApiError> {
-    let mut file_data: Option<Vec<u8>> = None;
-    let mut seal_data: Option<String> = None;
-
     // Parse multipart form
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError::bad_request(format!("Failed to parse multipart: {}", e)))?
-    {
-        let name = field.name().unwrap_or("").to_string();
+    let fields = MultipartFields::parse(&mut multipart, true, DEFAULT_MAX_FILE_SIZE).await?;
 
-        match name.as_str() {
-            "file" => {
-                // Validate Content-Type
-                let content_type = field.content_type().map(|s| s.to_string());
-                validate_content_type(content_type.as_deref())?;
+    // Extract required fields
+    let file = fields.require_file()?;
+    let content = &file.data;
 
-                // Read file data
-                let data = field
-                    .bytes()
-                    .await
-                    .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?
-                    .to_vec();
-
-                // Validate file size
-                validate_file_size(data.len(), DEFAULT_MAX_FILE_SIZE)?;
-
-                file_data = Some(data);
-            }
-            "seal_data" => {
-                seal_data = Some(field.text().await.map_err(|e| {
-                    ApiError::bad_request(format!("Failed to read seal_data: {}", e))
-                })?);
-            }
-            _ => {}
-        }
-    }
-
-    let content = file_data.ok_or_else(|| {
-        ApiError::bad_request("No file provided. Use 'file' field in multipart form.")
-    })?;
-
-    let seal_b64 = seal_data.ok_or_else(|| ApiError::bad_request("No seal_data provided."))?;
+    let seal_b64 = fields
+        .get_text("seal_data")
+        .ok_or_else(|| ApiError::bad_request("No seal_data provided."))?;
 
     // Decode seal from base64
     let seal_cbor = BASE64
-        .decode(&seal_b64)
+        .decode(seal_b64)
         .map_err(|e| ApiError::bad_request(format!("Invalid base64 in seal_data: {}", e)))?;
 
     // Deserialize seal from CBOR
@@ -104,9 +72,10 @@ pub async fn verify_handler(mut multipart: Multipart) -> Result<Json<VerifyRespo
         .map_err(|e| ApiError::bad_request(format!("Invalid seal format: {}", e)))?;
 
     // Verify signature and content in one call
-    let result = seal
-        .verify_content(&content)
-        .map_err(|e| ApiError::internal(format!("Verification error: {}", e)))?;
+    let result = seal.verify_content(content).map_err(|e| {
+        tracing::error!(error = %e, "Verification error");
+        ApiError::internal("Verification processing failed")
+    })?;
 
     let (authentic, details) = match result {
         ContentVerificationResult::Authentic => (

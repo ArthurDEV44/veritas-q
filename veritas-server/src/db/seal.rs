@@ -54,6 +54,14 @@ pub struct CreateSeal {
     pub captured_at: DateTime<Utc>,
 }
 
+/// Minimal seal creation result (avoids returning large blob fields)
+#[derive(Debug, Clone, FromRow)]
+pub struct SealCreated {
+    pub id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Seal capture metadata structure
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SealMetadata {
@@ -214,8 +222,8 @@ impl SealRepository {
     }
 
     /// Create a new seal
-    pub async fn create(&self, input: CreateSeal) -> Result<Seal, sqlx::Error> {
-        sqlx::query_as::<_, Seal>(
+    pub async fn create(&self, input: CreateSeal) -> Result<SealCreated, sqlx::Error> {
+        sqlx::query_as::<_, SealCreated>(
             r#"
             INSERT INTO seals (
                 user_id, organization_id, content_hash, perceptual_hash,
@@ -224,7 +232,7 @@ impl SealRepository {
                 trust_tier, c2pa_manifest_embedded, captured_at
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-            RETURNING *
+            RETURNING id, user_id, created_at
             "#,
         )
         .bind(input.user_id)
@@ -250,7 +258,12 @@ impl SealRepository {
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Seal>, sqlx::Error> {
         sqlx::query_as::<_, Seal>(
             r#"
-            SELECT * FROM seals WHERE id = $1
+            SELECT id, user_id, organization_id, content_hash, perceptual_hash,
+                   qrng_entropy, qrng_source, signature, public_key,
+                   media_type, file_size, mime_type, metadata,
+                   trust_tier, c2pa_manifest_embedded, captured_at, created_at, media_deleted_at
+            FROM seals
+            WHERE id = $1
             "#,
         )
         .bind(id)
@@ -266,7 +279,11 @@ impl SealRepository {
     ) -> Result<Option<Seal>, sqlx::Error> {
         sqlx::query_as::<_, Seal>(
             r#"
-            SELECT * FROM seals
+            SELECT id, user_id, organization_id, content_hash, perceptual_hash,
+                   qrng_entropy, qrng_source, signature, public_key,
+                   media_type, file_size, mime_type, metadata,
+                   trust_tier, c2pa_manifest_embedded, captured_at, created_at, media_deleted_at
+            FROM seals
             WHERE id = $1 AND user_id = $2
             "#,
         )
@@ -283,7 +300,12 @@ impl SealRepository {
     ) -> Result<Option<Seal>, sqlx::Error> {
         sqlx::query_as::<_, Seal>(
             r#"
-            SELECT * FROM seals WHERE content_hash = $1
+            SELECT id, user_id, organization_id, content_hash, perceptual_hash,
+                   qrng_entropy, qrng_source, signature, public_key,
+                   media_type, file_size, mime_type, metadata,
+                   trust_tier, c2pa_manifest_embedded, captured_at, created_at, media_deleted_at
+            FROM seals
+            WHERE content_hash = $1
             "#,
         )
         .bind(content_hash)
@@ -300,61 +322,63 @@ impl SealRepository {
         let limit = params.limit.min(100);
         let offset = (params.page - 1).max(0) * limit;
 
-        // Build query based on filters
-        let (seals, total) = if let Some(ref media_type) = params.media_type {
-            let seals = sqlx::query_as::<_, Seal>(
-                r#"
-                SELECT * FROM seals
-                WHERE user_id = $1 AND media_type = $2
-                ORDER BY created_at DESC
-                LIMIT $3 OFFSET $4
-                "#,
-            )
-            .bind(user_id)
-            .bind(media_type)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&self.pool)
-            .await?;
+        // Build WHERE clause based on filters
+        let mut where_conditions = vec!["user_id = $1".to_string()];
+        let mut bind_idx = 2;
 
-            let total: (i64,) = sqlx::query_as(
-                r#"
-                SELECT COUNT(*) FROM seals
-                WHERE user_id = $1 AND media_type = $2
-                "#,
-            )
-            .bind(user_id)
-            .bind(media_type)
-            .fetch_one(&self.pool)
-            .await?;
+        if params.media_type.is_some() {
+            where_conditions.push(format!("media_type = ${}", bind_idx));
+            bind_idx += 1;
+        }
 
-            (seals, total.0)
-        } else {
-            let seals = sqlx::query_as::<_, Seal>(
-                r#"
-                SELECT * FROM seals
-                WHERE user_id = $1
-                ORDER BY created_at DESC
-                LIMIT $2 OFFSET $3
-                "#,
-            )
-            .bind(user_id)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(&self.pool)
-            .await?;
+        if let Some(has_location) = params.has_location {
+            if has_location {
+                where_conditions.push("metadata->>'location' IS NOT NULL".to_string());
+            } else {
+                where_conditions.push("metadata->>'location' IS NULL".to_string());
+            }
+        }
 
-            let total: (i64,) = sqlx::query_as(
-                r#"
-                SELECT COUNT(*) FROM seals WHERE user_id = $1
-                "#,
-            )
-            .bind(user_id)
-            .fetch_one(&self.pool)
-            .await?;
+        let where_clause = where_conditions.join(" AND ");
 
-            (seals, total.0)
-        };
+        // Build queries
+        let select_query = format!(
+            r#"
+            SELECT id, user_id, organization_id, content_hash, perceptual_hash,
+                   qrng_entropy, qrng_source, signature, public_key,
+                   media_type, file_size, mime_type, metadata,
+                   trust_tier, c2pa_manifest_embedded, captured_at, created_at, media_deleted_at
+            FROM seals
+            WHERE {}
+            ORDER BY created_at DESC
+            LIMIT ${} OFFSET ${}
+            "#,
+            where_clause,
+            bind_idx,
+            bind_idx + 1
+        );
+
+        let count_query = format!(
+            r#"
+            SELECT COUNT(*) FROM seals
+            WHERE {}
+            "#,
+            where_clause
+        );
+
+        // Execute queries with bindings
+        let mut seals_query = sqlx::query_as::<_, Seal>(&select_query).bind(user_id);
+        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_query).bind(user_id);
+
+        if let Some(ref media_type) = params.media_type {
+            seals_query = seals_query.bind(media_type);
+            count_query = count_query.bind(media_type);
+        }
+
+        seals_query = seals_query.bind(limit).bind(offset);
+
+        let seals = seals_query.fetch_all(&self.pool).await?;
+        let total = count_query.fetch_one(&self.pool).await?.0;
 
         let records: Vec<SealRecord> = seals.into_iter().map(SealRecord::from).collect();
         let has_more = offset + (records.len() as i64) < total;

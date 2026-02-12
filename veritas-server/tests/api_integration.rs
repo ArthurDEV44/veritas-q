@@ -145,7 +145,7 @@ async fn test_seal_endpoint_creates_valid_seal() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::CREATED);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
@@ -188,7 +188,7 @@ async fn test_seal_endpoint_rejects_empty_content() {
     // Empty content might be accepted or rejected depending on implementation
     // Just verify we get a response (not a panic)
     assert!(
-        response.status() == StatusCode::OK || response.status() == StatusCode::BAD_REQUEST,
+        response.status() == StatusCode::CREATED || response.status() == StatusCode::BAD_REQUEST,
         "Should handle empty content gracefully"
     );
 }
@@ -213,7 +213,7 @@ async fn test_seal_endpoint_with_image_media_type() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::CREATED);
 }
 
 // ============================================================================
@@ -241,7 +241,7 @@ async fn test_verify_endpoint_authentic_content() {
         .await
         .unwrap();
 
-    assert_eq!(seal_response.status(), StatusCode::OK);
+    assert_eq!(seal_response.status(), StatusCode::CREATED);
 
     let seal_body = axum::body::to_bytes(seal_response.into_body(), usize::MAX)
         .await
@@ -392,7 +392,7 @@ async fn test_e2e_seal_verify_roundtrip_multiple_files() {
 
         assert_eq!(
             seal_response.status(),
-            StatusCode::OK,
+            StatusCode::CREATED,
             "Seal failed for {}",
             filename
         );

@@ -64,36 +64,13 @@ async fn main() {
     tracing::info!("Endpoints: POST /seal, POST /verify, GET /health, GET /ready");
     tracing::info!("OpenAPI: GET /docs (Swagger UI), GET /api-docs/openapi.json");
     tracing::info!(
-        "Timeout: {}s | Body limit: {}MB",
-        config.timeout_secs,
-        config.body_limit_mb
+        timeout_secs = config.timeout_secs,
+        body_limit_mb = config.body_limit_mb,
+        rate_limit_enabled = config.rate_limit_enabled,
+        rate_limit_per_sec = config.rate_limit_per_sec,
+        rate_limit_burst = config.rate_limit_burst,
+        "Server configuration"
     );
-
-    println!("\nListening on http://{}", addr);
-    println!("\nEndpoints:");
-    println!("  POST /seal   - Create seal (multipart: file, media_type?, mock?)");
-    println!("  POST /verify - Verify seal (multipart: file, seal_data)");
-    println!("  GET  /health - Health check (JSON: status, version, qrng_available)");
-    println!("  GET  /ready  - Kubernetes readiness probe");
-    println!("\nDocumentation:");
-    println!("  GET  /docs   - Swagger UI (interactive API documentation)");
-    println!("  GET  /api-docs/openapi.json - OpenAPI 3.0 specification");
-    println!("\nConfiguration:");
-    println!(
-        "  Timeout: {}s | Body limit: {}MB",
-        config.timeout_secs, config.body_limit_mb
-    );
-    if config.rate_limit_enabled {
-        println!(
-            "  Rate limit: {} req/s (burst: {})",
-            config.rate_limit_per_sec, config.rate_limit_burst
-        );
-    } else {
-        println!("  Rate limit: DISABLED");
-    }
-    println!("\nEnvironment variables:");
-    println!("  PORT, HOST, ALLOWED_ORIGINS, BODY_LIMIT_MB, MAX_FILE_SIZE_MB,");
-    println!("  REQUEST_TIMEOUT_SECS, RATE_LIMIT_ENABLED, RATE_LIMIT_PER_SEC, RATE_LIMIT_BURST");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
@@ -248,7 +225,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::CREATED);
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
@@ -288,7 +265,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::CREATED);
 
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
@@ -510,7 +487,7 @@ mod tests {
 
             assert_eq!(
                 response.status(),
-                StatusCode::OK,
+                StatusCode::CREATED,
                 "Failed for media_type: {}",
                 media_type
             );
@@ -667,7 +644,7 @@ mod tests {
 
             assert_eq!(
                 response.status(),
-                StatusCode::OK,
+                StatusCode::CREATED,
                 "Should accept Content-Type: {}",
                 file_type
             );

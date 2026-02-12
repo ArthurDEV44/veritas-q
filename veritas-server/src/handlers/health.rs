@@ -2,10 +2,15 @@
 //!
 //! Provides health and readiness endpoints for monitoring and orchestration.
 
+use std::sync::OnceLock;
+
 use axum::Json;
 use serde::Serialize;
 use utoipa::ToSchema;
-use veritas_core::AnuQrng;
+use veritas_core::qrng::{QrngProviderConfig, QrngProviderFactory};
+
+/// Cached QRNG availability status (computed once at first health check)
+static QRNG_AVAILABLE: OnceLock<bool> = OnceLock::new();
 
 /// Health check response
 #[derive(Serialize, ToSchema)]
@@ -37,8 +42,9 @@ pub struct HealthResponse {
     )
 )]
 pub async fn health() -> Json<HealthResponse> {
-    // Check if QRNG is available (non-blocking check)
-    let qrng_available = AnuQrng::new().is_ok();
+    // Check QRNG availability (cached after first call)
+    let qrng_available = *QRNG_AVAILABLE
+        .get_or_init(|| QrngProviderFactory::create(QrngProviderConfig::Auto).is_ok());
 
     let status = if qrng_available {
         "healthy"

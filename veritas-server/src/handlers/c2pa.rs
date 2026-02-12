@@ -3,7 +3,10 @@
 //! Handles C2PA-related API endpoints for embedding and verifying
 //! Veritas seals within C2PA manifests.
 
-use axum::{extract::Multipart, Json};
+use axum::{
+    extract::{Multipart, State},
+    Json,
+};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::Serialize;
 use std::io::Cursor;
@@ -14,7 +17,9 @@ use veritas_core::c2pa::{
 use veritas_core::{generate_keypair, LfdQrng, MediaType, MockQrng, SealBuilder, VeritasSeal};
 
 use crate::error::ApiError;
-use crate::validation::{validate_file_size, DEFAULT_MAX_FILE_SIZE};
+use crate::multipart::MultipartFields;
+use crate::state::AppState;
+use crate::validation::DEFAULT_MAX_FILE_SIZE;
 
 /// Response for C2PA embed operation
 #[derive(Serialize, ToSchema)]
@@ -115,54 +120,23 @@ impl From<&QuantumSealAssertion> for QuantumSealInfo {
     )
 )]
 pub async fn c2pa_embed_handler(
+    State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<C2paEmbedResponse>, ApiError> {
-    let mut file_data: Option<Vec<u8>> = None;
-    let mut file_name: Option<String> = None;
-    let mut content_type: Option<String> = None;
-    let mut seal_data: Option<String> = None;
-    let mut use_mock = false;
+    // Parse multipart form (no content type validation for C2PA)
+    let fields = MultipartFields::parse(&mut multipart, false, DEFAULT_MAX_FILE_SIZE).await?;
 
-    // Parse multipart form
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError::bad_request(format!("Failed to parse multipart: {}", e)))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-
-        match name.as_str() {
-            "file" => {
-                file_name = field.file_name().map(|s| s.to_string());
-                content_type = field.content_type().map(|s| s.to_string());
-
-                let data = field
-                    .bytes()
-                    .await
-                    .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?
-                    .to_vec();
-
-                validate_file_size(data.len(), DEFAULT_MAX_FILE_SIZE)?;
-                file_data = Some(data);
-            }
-            "seal_data" => {
-                seal_data = Some(field.text().await.unwrap_or_default());
-            }
-            "mock" => {
-                let value = field.text().await.unwrap_or_default();
-                use_mock = value.to_lowercase() == "true";
-            }
-            _ => {}
-        }
-    }
-
-    let content = file_data.ok_or_else(|| {
-        ApiError::bad_request("No file provided. Use 'file' field in multipart form.")
-    })?;
+    // Extract required fields
+    let file = fields.require_file()?;
+    let content = file.data.clone();
+    let seal_data = fields.get_text("seal_data").map(|s| s.to_string());
+    let use_mock = fields.get_bool("mock");
 
     // Determine content type from file or extension
-    let mime_type = content_type
-        .or_else(|| file_name.as_ref().and_then(|n| mime_from_filename(n)))
+    let mime_type = file
+        .content_type
+        .clone()
+        .or_else(|| file.file_name.as_ref().and_then(|n| mime_from_filename(n)))
         .unwrap_or_else(|| "image/jpeg".to_string());
 
     // Load or create seal
@@ -174,6 +148,13 @@ pub async fn c2pa_embed_handler(
             .map_err(|e| ApiError::bad_request(format!("Invalid seal format: {}", e)))?;
         (seal, false)
     } else {
+        // Check mock QRNG permission
+        if use_mock && !state.allow_mock_qrng {
+            return Err(ApiError::bad_request(
+                "Mock QRNG is not allowed in this environment. Set ALLOW_MOCK_QRNG=true to enable.",
+            ));
+        }
+
         // Create new seal
         let (public_key, secret_key) = generate_keypair();
         let media_type = media_type_from_mime(&mime_type);
@@ -184,38 +165,27 @@ pub async fn c2pa_embed_handler(
                 .build_secure(&qrng, &secret_key, &public_key)
                 .await?
         } else {
-            match LfdQrng::new() {
-                Ok(qrng) => {
-                    match SealBuilder::new(content.clone(), media_type)
-                        .build_secure(&qrng, &secret_key, &public_key)
-                        .await
-                    {
-                        Ok(seal) => seal,
-                        Err(_) => {
-                            let mock_qrng = MockQrng::default();
-                            SealBuilder::new(content.clone(), media_type)
-                                .build_secure(&mock_qrng, &secret_key, &public_key)
-                                .await?
-                        }
-                    }
-                }
-                Err(_) => {
-                    let mock_qrng = MockQrng::default();
-                    SealBuilder::new(content.clone(), media_type)
-                        .build_secure(&mock_qrng, &secret_key, &public_key)
-                        .await?
-                }
-            }
+            let qrng = LfdQrng::new().map_err(|e| {
+                tracing::error!("QRNG client creation failed: {}", e);
+                ApiError::service_unavailable("QRNG service unavailable")
+            })?;
+            SealBuilder::new(content.clone(), media_type)
+                .build_secure(&qrng, &secret_key, &public_key)
+                .await
+                .map_err(|e| {
+                    tracing::error!("QRNG entropy fetch failed: {}", e);
+                    ApiError::service_unavailable("QRNG service unavailable")
+                })?
         };
         (seal, true)
     };
 
     // Load signer from environment
     let signer = VeritasSigner::from_env().map_err(|e| {
-        ApiError::internal(format!(
-            "C2PA signing credentials not configured: {}. Set C2PA_SIGNING_KEY and C2PA_SIGNING_CERT",
-            e
-        ))
+        tracing::error!(error = %e, "C2PA signing credentials not configured");
+        ApiError::internal(
+            "C2PA signing credentials not configured. Set C2PA_SIGNING_KEY and C2PA_SIGNING_CERT",
+        )
     })?;
 
     // Build manifest and embed
@@ -230,7 +200,10 @@ pub async fn c2pa_embed_handler(
 
     builder
         .embed_in_stream(&mime_type, &mut input, &mut output, signer)
-        .map_err(|e| ApiError::internal(format!("Failed to embed C2PA manifest: {}", e)))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to embed C2PA manifest");
+            ApiError::internal("Failed to embed C2PA manifest")
+        })?;
 
     // Get the actual output data
     let output_data = output.into_inner().clone();
@@ -265,44 +238,23 @@ pub async fn c2pa_embed_handler(
 pub async fn c2pa_verify_handler(
     mut multipart: Multipart,
 ) -> Result<Json<C2paVerifyResponse>, ApiError> {
-    let mut file_data: Option<Vec<u8>> = None;
-    let mut content_type: Option<String> = None;
-    let mut file_name: Option<String> = None;
+    // Parse multipart form (no content type validation for C2PA)
+    let fields = MultipartFields::parse(&mut multipart, false, DEFAULT_MAX_FILE_SIZE).await?;
 
-    // Parse multipart form
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError::bad_request(format!("Failed to parse multipart: {}", e)))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-
-        if name == "file" {
-            file_name = field.file_name().map(|s| s.to_string());
-            content_type = field.content_type().map(|s| s.to_string());
-
-            let data = field
-                .bytes()
-                .await
-                .map_err(|e| ApiError::bad_request(format!("Failed to read file: {}", e)))?
-                .to_vec();
-
-            validate_file_size(data.len(), DEFAULT_MAX_FILE_SIZE)?;
-            file_data = Some(data);
-        }
-    }
-
-    let content = file_data.ok_or_else(|| {
-        ApiError::bad_request("No file provided. Use 'file' field in multipart form.")
-    })?;
+    // Extract required fields
+    let file = fields.require_file()?;
+    let content = &file.data;
 
     // Determine content type
-    let mime_type = content_type
-        .or_else(|| file_name.as_ref().and_then(|n| mime_from_filename(n)))
+    let mime_type = file
+        .content_type
+        .as_ref()
+        .cloned()
+        .or_else(|| file.file_name.as_ref().and_then(|n| mime_from_filename(n)))
         .unwrap_or_else(|| "image/jpeg".to_string());
 
     // Try to extract quantum seal
-    let mut stream = Cursor::new(&content);
+    let mut stream = Cursor::new(content);
     let quantum_seal = extract_quantum_seal_from_stream(&mime_type, &mut stream).ok();
 
     // For now, we return basic info

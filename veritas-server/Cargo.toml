@@ -18,7 +18,7 @@ default = ["c2pa"]
 c2pa = ["veritas-core/c2pa", "tempfile"]
 
 [dependencies]
-veritas-core = { workspace = true, features = ["c2pa"] }
+veritas-core = { workspace = true }
 tempfile = { version = "3", optional = true }
 hex.workspace = true
 axum.workspace = true
@@ -40,6 +40,9 @@ webauthn-rs-proto.workspace = true
 url.workspace = true
 dashmap.workspace = true
 sqlx.workspace = true
+reqwest.workspace = true
+jsonwebtoken = "9"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+openssl.workspace = true
