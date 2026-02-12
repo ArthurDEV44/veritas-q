@@ -46,6 +46,13 @@ _bmad-output/implementation-artifacts/
 _bmad/
 _bmad-output/
 
+# Temporary artifacts
+tasks/
+test_results.txt
+
 # CLAUDE
 CLAUDE.md
 .claude
+
+# Lock files (project uses bun)
+www/package-lock.json
