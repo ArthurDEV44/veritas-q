@@ -8,7 +8,7 @@ use pqcrypto_mldsa::mldsa65;
 use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use tracing::{debug, info, warn};
 use veritas_core::{
-    generate_keypair, AnuQrng, MediaType, MockQrng, QuantumEntropySource, SealBuilder, VeritasSeal,
+    generate_keypair, LfdQrng, MediaType, MockQrng, QuantumEntropySource, SealBuilder, VeritasSeal,
     ZeroizingSecretKey, MLDSA65_PUBLIC_KEY_BYTES, MLDSA65_SECRET_KEY_BYTES,
 };
 
@@ -117,7 +117,7 @@ pub async fn execute(
             if use_mock {
                 "Mock (testing)"
             } else {
-                "ANU QRNG"
+                "Auto (best available)"
             }
         );
         println!(
@@ -169,19 +169,30 @@ pub async fn execute(
         let qrng = MockQrng::default();
         create_seal(content, media_type, &qrng, &public_key, &secret_key).await?
     } else {
-        match create_seal_with_anu(content.clone(), media_type, &public_key, &secret_key).await {
-            Ok(seal) => seal,
-            Err(e) => {
-                warn!(error = %e, "ANU QRNG failed, falling back to mock entropy");
-                if !quiet {
-                    eprintln!(
-                        "{}",
-                        format!("ANU QRNG failed: {}. Falling back to mock entropy.", e).yellow()
-                    );
-                }
-                let qrng = MockQrng::default();
-                create_seal(content, media_type, &qrng, &public_key, &secret_key).await?
+        // Auto-select QRNG: try ID Quantique first (if API key set), fall back to LfD
+        use veritas_core::qrng::IdQuantiqueConfig;
+
+        if let Ok(idq_config) = IdQuantiqueConfig::from_env() {
+            info!("Auto-selected ID Quantique QRNG provider");
+            let provider = veritas_core::qrng::IdQuantiqueQrng::new(idq_config)
+                .context("Failed to create ID Quantique QRNG")?;
+            if !quiet {
+                eprintln!(
+                    "{}",
+                    format!("Using QRNG: {}", provider.source_id()).dimmed()
+                );
             }
+            create_seal(content, media_type, &provider, &public_key, &secret_key).await?
+        } else {
+            info!("Auto-selected LfD QRNG provider (Germany)");
+            let provider = LfdQrng::new().context("Failed to create LfD QRNG")?;
+            if !quiet {
+                eprintln!(
+                    "{}",
+                    format!("Using QRNG: {}", provider.source_id()).dimmed()
+                );
+            }
+            create_seal(content, media_type, &provider, &public_key, &secret_key).await?
         }
     };
 
@@ -224,17 +235,6 @@ pub async fn execute(
     }
 
     Ok(())
-}
-
-async fn create_seal_with_anu(
-    content: Vec<u8>,
-    media_type: MediaType,
-    public_key: &mldsa65::PublicKey,
-    secret_key: &ZeroizingSecretKey,
-) -> Result<VeritasSeal> {
-    info!("Fetching quantum entropy from ANU QRNG");
-    let qrng = AnuQrng::new().context("Failed to create ANU QRNG client")?;
-    create_seal(content, media_type, &qrng, public_key, secret_key).await
 }
 
 async fn create_seal<Q: QuantumEntropySource>(
