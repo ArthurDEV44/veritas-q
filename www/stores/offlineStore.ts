@@ -9,8 +9,7 @@ import {
   generateVideoThumbnail,
 } from '@/lib/offlineDb';
 import type { SealResponse, SealInput } from '@/hooks/useSealMutation';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+import { API_URL, getAuthHeaders } from '@/lib/api';
 
 export interface OfflineState {
   /** Number of pending captures waiting for sync */
@@ -34,7 +33,6 @@ export interface OfflineActions {
     options?: {
       location?: SealInput['location'];
       deviceAttestation?: string;
-      userId?: string;
     }
   ) => Promise<string>;
 
@@ -47,17 +45,20 @@ export interface OfflineActions {
   /** Sync a single pending capture */
   syncCapture: (
     localId: string,
-    userId: string | null
+    getToken: () => Promise<string | null>
   ) => Promise<SealResponse | null>;
 
   /** Sync all pending captures */
-  syncAllPending: (userId: string | null) => Promise<void>;
+  syncAllPending: (getToken: () => Promise<string | null>) => Promise<void>;
 
   /** Update pending count from database */
   refreshPendingCount: () => Promise<void>;
 
   /** Retry a failed capture */
-  retryCapture: (localId: string, userId: string | null) => Promise<void>;
+  retryCapture: (
+    localId: string,
+    getToken: () => Promise<string | null>
+  ) => Promise<void>;
 
   /** Clear all pending captures */
   clearAllPending: () => Promise<void>;
@@ -106,7 +107,6 @@ export const useOfflineStore = create<OfflineStore>()(
           deviceAttestation: options?.deviceAttestation,
           status: 'pending',
           syncAttempts: 0,
-          userId: options?.userId,
         };
 
         await offlineDb.pendingCaptures.add(pendingCapture);
@@ -127,7 +127,7 @@ export const useOfflineStore = create<OfflineStore>()(
         await get().refreshPendingCount();
       },
 
-      syncCapture: async (localId, userId) => {
+      syncCapture: async (localId, getToken) => {
         const { syncingIds } = get();
 
         // Already syncing this capture
@@ -180,10 +180,11 @@ export const useOfflineStore = create<OfflineStore>()(
           }
 
           // Build headers
-          const headers: HeadersInit = {};
-          const effectiveUserId = userId || capture.userId;
-          if (effectiveUserId) {
-            headers['x-clerk-user-id'] = effectiveUserId;
+          let headers: HeadersInit = {};
+          try {
+            headers = await getAuthHeaders(getToken);
+          } catch {
+            // Offline mode - will retry when online with auth
           }
 
           // Make API call
@@ -260,7 +261,7 @@ export const useOfflineStore = create<OfflineStore>()(
         }
       },
 
-      syncAllPending: async (userId) => {
+      syncAllPending: async (getToken) => {
         const captures = await offlineDb.pendingCaptures
           .where('status')
           .anyOf(['pending', 'failed'])
@@ -279,7 +280,7 @@ export const useOfflineStore = create<OfflineStore>()(
             continue;
           }
 
-          await get().syncCapture(capture.localId, userId);
+          await get().syncCapture(capture.localId, getToken);
 
           // Small delay between syncs
           await new Promise((resolve) => setTimeout(resolve, 500));
@@ -293,7 +294,7 @@ export const useOfflineStore = create<OfflineStore>()(
         set({ pendingCount: count });
       },
 
-      retryCapture: async (localId, userId) => {
+      retryCapture: async (localId, getToken) => {
         // Reset status to pending
         await offlineDb.pendingCaptures
           .where('localId')
@@ -304,7 +305,7 @@ export const useOfflineStore = create<OfflineStore>()(
           });
 
         // Attempt sync
-        await get().syncCapture(localId, userId);
+        await get().syncCapture(localId, getToken);
       },
 
       clearAllPending: async () => {

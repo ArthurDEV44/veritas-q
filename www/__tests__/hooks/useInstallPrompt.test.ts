@@ -22,12 +22,15 @@ describe("useInstallPrompt", () => {
     });
   });
 
-  it("should initialize with default values", () => {
+  it("should initialize with default values", async () => {
     const { result } = renderHook(() => useInstallPrompt());
 
-    expect(result.current.isInstallable).toBe(false);
-    expect(result.current.isInstalled).toBe(false);
-    expect(typeof result.current.promptInstall).toBe("function");
+    // Hook starts with isInstalled: true to avoid flash, then updates via microtask
+    await waitFor(() => {
+      expect(result.current.isInstallable).toBe(false);
+      expect(result.current.isInstalled).toBe(false);
+      expect(typeof result.current.promptInstall).toBe("function");
+    });
   });
 
   it("should detect iOS devices", async () => {

@@ -3,8 +3,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useAuth } from '@clerk/nextjs';
 import { useCallback } from 'react';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+import { API_URL, getAuthHeaders } from '@/lib/api';
 
 /** Export format options */
 export type ExportFormat = 'json' | 'c2pa';
@@ -71,7 +70,7 @@ async function fetchSeals(
   page: number,
   limit: number,
   filters: SealFilters,
-  userId: string | null
+  getToken: () => Promise<string | null>
 ): Promise<SealsListResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -86,13 +85,11 @@ async function fetchSeals(
     params.set('has_location', String(filters.has_location));
   }
 
+  const authHeaders = await getAuthHeaders(getToken);
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    ...authHeaders,
   };
-
-  if (userId) {
-    headers['x-clerk-user-id'] = userId;
-  }
 
   const response = await fetch(`${API_URL}/api/v1/seals?${params}`, {
     method: 'GET',
@@ -110,15 +107,13 @@ async function fetchSeals(
 /** Fetch single seal detail */
 async function fetchSealDetail(
   sealId: string,
-  userId: string | null
+  getToken: () => Promise<string | null>
 ): Promise<{ seal: SealDetail }> {
+  const authHeaders = await getAuthHeaders(getToken);
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    ...authHeaders,
   };
-
-  if (userId) {
-    headers['x-clerk-user-id'] = userId;
-  }
 
   const response = await fetch(`${API_URL}/api/v1/seals/${sealId}`, {
     method: 'GET',
@@ -140,12 +135,12 @@ export function useSealsInfiniteQuery(
   filters: SealFilters = {},
   limit: number = 20
 ) {
-  const { userId } = useAuth();
+  const { getToken, userId } = useAuth();
 
   return useInfiniteQuery({
     queryKey: ['seals', 'list', filters, userId],
     queryFn: ({ pageParam = 1 }) =>
-      fetchSeals(pageParam, limit, filters, userId ?? null),
+      fetchSeals(pageParam, limit, filters, getToken),
     getNextPageParam: (lastPage) =>
       lastPage.has_more ? lastPage.page + 1 : undefined,
     initialPageParam: 1,
@@ -158,11 +153,11 @@ export function useSealsInfiniteQuery(
  * Hook for single seal detail
  */
 export function useSealDetailQuery(sealId: string | null) {
-  const { userId } = useAuth();
+  const { getToken, userId } = useAuth();
 
   return useQuery({
     queryKey: ['seals', 'detail', sealId, userId],
-    queryFn: () => fetchSealDetail(sealId!, userId ?? null),
+    queryFn: () => fetchSealDetail(sealId!, getToken),
     enabled: !!sealId && !!userId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -245,17 +240,15 @@ export interface C2paExportResponse {
 async function exportSeal(
   sealId: string,
   format: ExportFormat,
-  userId: string | null
+  getToken: () => Promise<string | null>
 ): Promise<JsonExportResponse | C2paExportResponse> {
   const params = new URLSearchParams({ format });
 
+  const authHeaders = await getAuthHeaders(getToken);
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    ...authHeaders,
   };
-
-  if (userId) {
-    headers['x-clerk-user-id'] = userId;
-  }
 
   const response = await fetch(
     `${API_URL}/api/v1/seals/${sealId}/export?${params}`,
@@ -277,11 +270,11 @@ async function exportSeal(
  * Hook for exporting seals
  */
 export function useSealExport() {
-  const { userId } = useAuth();
+  const { getToken } = useAuth();
 
   const downloadExport = useCallback(
     async (sealId: string, format: ExportFormat) => {
-      const data = await exportSeal(sealId, format, userId ?? null);
+      const data = await exportSeal(sealId, format, getToken);
 
       // Create filename
       const timestamp = new Date().toISOString().slice(0, 10);
@@ -302,7 +295,7 @@ export function useSealExport() {
 
       URL.revokeObjectURL(url);
     },
-    [userId]
+    [getToken]
   );
 
   return { downloadExport };

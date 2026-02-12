@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useUser, useClerk } from "@clerk/nextjs";
+import { useUser, useClerk, useAuth } from "@clerk/nextjs";
 import { ArrowLeft, AlertTriangle, Trash2, Shield } from "lucide-react";
 import Link from "next/link";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+import { API_URL, getAuthHeaders } from "@/lib/api";
 const CONFIRMATION_TEXT = "SUPPRIMER";
 
 export default function DeleteAccountPage() {
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { getToken } = useAuth();
 
   const [confirmationInput, setConfirmationInput] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -27,11 +27,12 @@ export default function DeleteAccountPage() {
 
     try {
       // Step 1: Delete from our database first
+      const authHeaders = await getAuthHeaders(getToken);
       const response = await fetch(`${API_URL}/api/v1/users/me`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          "x-clerk-user-id": user.id,
+          ...authHeaders,
         },
       });
 

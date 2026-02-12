@@ -2,8 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '@clerk/nextjs';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+import { API_URL, getAuthHeaders } from '@/lib/api';
 
 export interface SealResponse {
   seal_id: string;
@@ -35,7 +34,7 @@ export interface SealInput {
 
 async function createSeal(
   input: SealInput,
-  clerkUserId: string | null
+  getToken: () => Promise<string | null>
 ): Promise<SealResponse> {
   const formData = new FormData();
   formData.append('file', input.file, input.filename);
@@ -49,9 +48,11 @@ async function createSeal(
     formData.append('location', JSON.stringify(input.location));
   }
 
-  const headers: HeadersInit = {};
-  if (clerkUserId) {
-    headers['x-clerk-user-id'] = clerkUserId;
+  let headers: HeadersInit = {};
+  try {
+    headers = await getAuthHeaders(getToken);
+  } catch {
+    // Anonymous seal creation (no auth)
   }
 
   const controller = new AbortController();
@@ -80,10 +81,10 @@ async function createSeal(
 }
 
 export function useSealMutation() {
-  const { userId } = useAuth();
+  const { getToken } = useAuth();
 
   return useMutation({
-    mutationFn: (input: SealInput) => createSeal(input, userId ?? null),
+    mutationFn: (input: SealInput) => createSeal(input, getToken),
     onError: (error) => {
       console.error('Seal mutation error:', error);
     },
