@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
   Shield,
@@ -167,29 +166,16 @@ export default function Verifier() {
 
   return (
     <div className="flex flex-col items-center gap-6 w-full">
-      <AnimatePresence mode="wait">
-        {/* Result Display */}
-        {state === "complete" && result && (
-          <motion.div
-            key="result"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="w-full flex justify-center"
-          >
-            <VerificationResult result={result} onReset={reset} />
-          </motion.div>
-        )}
+      {/* Result Display */}
+      {state === "complete" && result && (
+        <div className="w-full flex justify-center animate-[slideUp_0.3s_ease-out]">
+          <VerificationResult result={result} onReset={reset} />
+        </div>
+      )}
 
-        {/* Error Display */}
-        {state === "error" && (
-          <motion.div
-            key="error"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center gap-4 p-6 bg-red-500/10 rounded-2xl"
-          >
+      {/* Error Display */}
+      {state === "error" && (
+        <div className="flex flex-col items-center gap-4 p-6 bg-red-500/10 rounded-2xl animate-[slideUp_0.3s_ease-out]">
             <AlertCircle className="w-16 h-16 text-red-500" />
             <h3 className="text-lg font-semibold text-red-500">Erreur</h3>
             <p className="text-foreground/60 text-center max-w-sm">
@@ -201,18 +187,12 @@ export default function Verifier() {
             >
               Réessayer
             </button>
-          </motion.div>
+          </div>
         )}
 
-        {/* Drop Zone / Verification UI */}
-        {state !== "complete" && state !== "error" && (
-          <motion.div
-            key="dropzone"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="w-full"
-          >
+      {/* Drop Zone / Verification UI */}
+      {state !== "complete" && state !== "error" && (
+        <div className="w-full animate-[fadeIn_0.3s_ease-out]">
             {/* Drop Zone */}
             <div
               onDragOver={handleDragOver}
@@ -278,11 +258,7 @@ export default function Verifier() {
             {(mediaFile || sealFile) && !isProcessing && (
               <div className="mt-4 space-y-2">
                 {mediaFile && (
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-3 p-3 bg-surface-elevated rounded-lg"
-                  >
+                  <div className="flex items-center gap-3 p-3 bg-surface-elevated rounded-lg animate-[slideInRight_0.3s_ease-out]">
                     {mediaFile.preview ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -307,15 +283,11 @@ export default function Verifier() {
                     >
                       <X className="w-4 h-4 text-foreground/60" />
                     </button>
-                  </motion.div>
+                  </div>
                 )}
 
                 {sealFile && (
-                  <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-3 p-3 bg-surface-elevated rounded-lg"
-                  >
+                  <div className="flex items-center gap-3 p-3 bg-surface-elevated rounded-lg animate-[slideInRight_0.3s_ease-out]">
                     <Shield className="w-10 h-10 text-quantum p-2 bg-quantum/10 rounded" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
@@ -329,22 +301,17 @@ export default function Verifier() {
                     >
                       <X className="w-4 h-4 text-foreground/60" />
                     </button>
-                  </motion.div>
+                  </div>
                 )}
               </div>
             )}
 
             {/* Verify button */}
             {canVerify && state === "dropped" && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-6 flex flex-col items-center gap-3"
-              >
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
+              <div className="mt-6 flex flex-col items-center gap-3 animate-[slideUp_0.3s_ease-out]">
+                <button
                   onClick={verify}
-                  className="flex items-center gap-2 px-8 py-3 bg-quantum text-black font-semibold rounded-full hover:bg-quantum-dim transition-colors quantum-glow-sm"
+                  className="flex items-center gap-2 px-8 py-3 bg-quantum text-black font-semibold rounded-full hover:bg-quantum-dim transition-colors quantum-glow-sm transition-transform active:scale-95"
                 >
                   {sealFile ? (
                     <>
@@ -357,7 +324,7 @@ export default function Verifier() {
                       <span>Rechercher l&apos;authenticité</span>
                     </>
                   )}
-                </motion.button>
+                </button>
 
                 {/* Verification method hint */}
                 {!sealFile && isImageFile(mediaFile.file) && (
@@ -365,22 +332,17 @@ export default function Verifier() {
                     Recherche de manifest C2PA intégré ou résolution par hash perceptuel
                   </p>
                 )}
-              </motion.div>
+              </div>
             )}
 
             {/* Missing file hint */}
             {state === "dropped" && !canVerify && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="mt-4 text-center text-sm text-foreground/60"
-              >
+              <p className="mt-4 text-center text-sm text-foreground/60 animate-[fadeIn_0.3s_ease-out]">
                 Ajoutez un fichier média à vérifier
-              </motion.p>
+              </p>
             )}
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }

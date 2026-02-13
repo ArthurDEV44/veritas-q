@@ -121,6 +121,15 @@ export async function verifyC2pa(file: File): Promise<C2paVerifyResponse> {
   return response.json();
 }
 
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 /**
  * Soft binding resolution: find seal by perceptual hash similarity
  */
@@ -134,12 +143,7 @@ export async function resolveByImage(
 ): Promise<ResolveResponse> {
   // Convert file to base64
   const arrayBuffer = await file.arrayBuffer();
-  const base64 = btoa(
-    new Uint8Array(arrayBuffer).reduce(
-      (data, byte) => data + String.fromCharCode(byte),
-      ""
-    )
-  );
+  const base64 = uint8ArrayToBase64(new Uint8Array(arrayBuffer));
 
   const response = await fetch(`${API_URL}/resolve`, {
     method: "POST",

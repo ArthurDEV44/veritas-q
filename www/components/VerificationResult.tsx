@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import {
   ShieldCheck,
   ShieldX,
@@ -37,12 +36,7 @@ export default function VerificationResult({
   onReset,
 }: VerificationResultProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="w-full max-w-lg"
-    >
+    <div className="w-full max-w-lg animate-[scaleIn_0.3s_ease-out]">
       {result.method === "classic" && result.classic && (
         <ClassicResult result={result.classic} success={result.success} />
       )}
@@ -56,20 +50,15 @@ export default function VerificationResult({
         <ErrorDisplay message={result.error} />
       )}
 
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="mt-6 flex justify-center"
-      >
+      <div className="mt-6 flex justify-center animate-[fadeIn_0.3s_ease-out]">
         <button
           onClick={onReset}
           className="px-6 py-2 bg-surface-elevated hover:bg-surface-elevated/80 rounded-full border border-border transition-colors text-sm"
         >
           Vérifier une autre image
         </button>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }
 
@@ -90,11 +79,8 @@ function ClassicResult({
         success ? "bg-green-500/10" : "bg-red-500/10"
       }`}
     >
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", stiffness: 200 }}
-        className={success ? "quantum-glow" : ""}
+      <div
+        className={success ? "quantum-glow animate-[scaleIn_0.3s_ease-out]" : "animate-[scaleIn_0.3s_ease-out]"}
         style={
           success
             ? { boxShadow: "0 0 40px rgba(34, 197, 94, 0.4)", borderRadius: "999px" }
@@ -106,7 +92,7 @@ function ClassicResult({
         ) : (
           <ShieldX className="w-20 h-20 text-red-500" />
         )}
-      </motion.div>
+      </div>
       <h2
         className={`text-2xl font-bold ${
           success ? "text-green-500" : "text-red-500"
@@ -150,11 +136,8 @@ function C2paResult({ result }: { result: C2paVerifyResponse }) {
           c2pa_valid ? "bg-green-500/10" : "bg-red-500/10"
         }`}
       >
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 200 }}
-          className={c2pa_valid ? "quantum-glow" : ""}
+        <div
+          className={c2pa_valid ? "quantum-glow animate-[scaleIn_0.3s_ease-out]" : "animate-[scaleIn_0.3s_ease-out]"}
           style={
             c2pa_valid
               ? { boxShadow: "0 0 40px rgba(34, 197, 94, 0.4)", borderRadius: "999px" }
@@ -166,7 +149,7 @@ function C2paResult({ result }: { result: C2paVerifyResponse }) {
           ) : (
             <ShieldX className="w-16 h-16 text-red-500" />
           )}
-        </motion.div>
+        </div>
         <div className="text-center">
           <h2
             className={`text-xl font-bold ${
@@ -192,12 +175,7 @@ function C2paResult({ result }: { result: C2paVerifyResponse }) {
 
       {/* Quantum Seal Details */}
       {quantum_seal && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-surface-elevated rounded-xl p-4 space-y-3"
-        >
+        <div className="bg-surface-elevated rounded-xl p-4 space-y-3 animate-[fadeIn_0.3s_ease-out]">
           <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
             <Info className="w-4 h-4 text-quantum" />
             Détails du Sceau Quantum
@@ -241,30 +219,20 @@ function C2paResult({ result }: { result: C2paVerifyResponse }) {
               </p>
             </div>
           )}
-        </motion.div>
+        </div>
       )}
 
       {/* Claim Generator */}
       {claim_generator && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-surface rounded-lg p-3 text-sm"
-        >
+        <div className="bg-surface rounded-lg p-3 text-sm animate-[fadeIn_0.3s_ease-out]">
           <span className="text-foreground/50">Générateur: </span>
           <span className="text-foreground/80">{claim_generator}</span>
-        </motion.div>
+        </div>
       )}
 
       {/* Validation Errors */}
       {validation_errors.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-red-500/10 rounded-lg p-3 space-y-2"
-        >
+        <div className="bg-red-500/10 rounded-lg p-3 space-y-2 animate-[fadeIn_0.3s_ease-out]">
           <h4 className="text-sm font-semibold text-red-400 flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
             Erreurs de validation
@@ -277,7 +245,7 @@ function C2paResult({ result }: { result: C2paVerifyResponse }) {
               </li>
             ))}
           </ul>
-        </motion.div>
+        </div>
       )}
     </div>
   );
@@ -312,13 +280,9 @@ function SoftBindingResult({ result }: { result: ResolveResponse }) {
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-amber-500/10">
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 200 }}
-        >
+        <div className="animate-[scaleIn_0.3s_ease-out]">
           <Search className="w-16 h-16 text-amber-500" />
-        </motion.div>
+        </div>
         <div className="text-center">
           <h2 className="text-xl font-bold text-amber-500">SCEAU RETROUVE</h2>
           {/* SealBadge for found seals - show as tampered if distance > 0 */}
@@ -339,12 +303,7 @@ function SoftBindingResult({ result }: { result: ResolveResponse }) {
       </div>
 
       {/* Best Match Details */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="bg-surface-elevated rounded-xl p-4 space-y-3"
-      >
+      <div className="bg-surface-elevated rounded-xl p-4 space-y-3 animate-[fadeIn_0.3s_ease-out]">
         <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
           <CheckCircle className="w-4 h-4 text-amber-500" />
           Meilleure correspondance
@@ -399,18 +358,13 @@ function SoftBindingResult({ result }: { result: ResolveResponse }) {
             </div>
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* Other matches */}
       {count > 1 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-surface rounded-lg p-3 text-sm text-foreground/60"
-        >
+        <div className="bg-surface rounded-lg p-3 text-sm text-foreground/60 animate-[fadeIn_0.3s_ease-out]">
           <span>{count - 1} autre(s) correspondance(s) trouvée(s)</span>
-        </motion.div>
+        </div>
       )}
     </div>
   );
@@ -474,11 +428,9 @@ function ConfidenceBar({ distance }: { distance: number }) {
 
   return (
     <div className="w-16 h-2 bg-surface rounded-full overflow-hidden">
-      <motion.div
-        initial={{ width: 0 }}
-        animate={{ width: `${percentage}%` }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className={`h-full ${barColor}`}
+      <div
+        className={`h-full ${barColor} transition-all duration-500 ease-out`}
+        style={{ width: `${percentage}%` }}
       />
     </div>
   );

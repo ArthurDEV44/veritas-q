@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Download, X, Share, Smartphone } from "lucide-react";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 
@@ -36,14 +35,7 @@ export default function InstallBanner() {
   };
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ y: 100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 100, opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-50"
-      >
+    <div className="animate-[slideUp_0.3s_ease-out] fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-50">
         <div className="bg-surface-elevated border border-border rounded-2xl p-4 shadow-xl backdrop-blur-lg">
           <div className="flex items-start gap-3">
             <div className="w-12 h-12 rounded-xl bg-quantum/20 flex items-center justify-center shrink-0">
@@ -81,14 +73,13 @@ export default function InstallBanner() {
           </div>
 
           {!isIOS && (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
+            <button
               onClick={handleInstall}
-              className="w-full mt-3 py-2.5 bg-quantum text-black rounded-xl font-medium text-sm hover:bg-quantum-dim transition-colors flex items-center justify-center gap-2"
+              className="transition-transform active:scale-95 w-full mt-3 py-2.5 bg-quantum text-black rounded-xl font-medium text-sm hover:bg-quantum-dim transition-colors flex items-center justify-center gap-2"
             >
               <Download className="w-4 h-4" />
               Installer
-            </motion.button>
+            </button>
           )}
 
           {isIOS && (
@@ -99,7 +90,6 @@ export default function InstallBanner() {
             </div>
           )}
         </div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
   );
 }

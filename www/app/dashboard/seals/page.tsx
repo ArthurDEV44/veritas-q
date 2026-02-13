@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { Shield, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import SealList from '@/components/SealList';
@@ -100,13 +99,9 @@ function SealsPageContent() {
       />
 
       {/* Seal list with infinite scroll */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
+      <div className="animate-[slideUp_0.3s_ease-out]">
         <SealList filters={filters} view={view} />
-      </motion.div>
+      </div>
     </div>
   );
 }

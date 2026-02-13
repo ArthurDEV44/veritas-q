@@ -112,6 +112,8 @@ export async function generateThumbnail(
   maxSize: number = 200
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
+    if (blob.size > 10 * 1024 * 1024) return resolve(undefined); // Skip thumbnails for files > 10MB
+
     // Only for images
     if (!blob.type.startsWith('image/')) {
       resolve(undefined);
@@ -175,6 +177,8 @@ export async function generateVideoThumbnail(
   maxSize: number = 200
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
+    if (blob.size > 10 * 1024 * 1024) return resolve(undefined); // Skip thumbnails for files > 10MB
+
     if (!blob.type.startsWith('video/')) {
       resolve(undefined);
       return;

@@ -42,7 +42,7 @@ export function useOfflineSync(
 ): UseOfflineSyncReturn {
   const { autoSync = true, showNotifications = true } = options;
 
-  const { userId } = useAuth();
+  const { getToken } = useAuth();
   const { isOffline } = useServiceWorker();
 
   const {
@@ -66,7 +66,7 @@ export function useOfflineSync(
       return;
     }
 
-    await syncAllPending(userId ?? null);
+    await syncAllPending(getToken);
 
     // Show notification if enabled
     if (showNotifications && 'Notification' in window) {
@@ -75,7 +75,7 @@ export function useOfflineSync(
         showSyncNotification('Synchronisation terminee', 'Tous les medias ont ete scelles.');
       }
     }
-  }, [isOffline, syncAllPending, userId, showNotifications]);
+  }, [isOffline, syncAllPending, getToken, showNotifications]);
 
   // Retry a specific capture
   const retryCapture = useCallback(
@@ -85,9 +85,9 @@ export function useOfflineSync(
         return;
       }
 
-      await storeRetryCapture(localId, userId ?? null);
+      await storeRetryCapture(localId, getToken);
     },
-    [isOffline, storeRetryCapture, userId]
+    [isOffline, storeRetryCapture, getToken]
   );
 
   // Clear all pending

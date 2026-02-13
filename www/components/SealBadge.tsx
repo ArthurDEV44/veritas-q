@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { ShieldCheck, Shield, Clock, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
@@ -184,15 +183,12 @@ export default function SealBadge({
 
   if (animate) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className={position ? "absolute" : "inline-block"}
+      <div
+        className={`${position ? "absolute" : "inline-block"} animate-[scaleIn_0.3s_ease-out]`}
         style={position ? { [position.split("-")[0]]: "0.5rem", [position.split("-")[1]]: "0.5rem" } : undefined}
       >
         {badgeContent}
-      </motion.div>
+      </div>
     );
   }
 

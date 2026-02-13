@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Image as ImageIcon,
   Video,
@@ -28,7 +27,7 @@ export default function PendingCapturesList({
   collapsible = false,
   maxItems = 5,
 }: PendingCapturesListProps) {
-  const { userId } = useAuth();
+  const { getToken } = useAuth();
   const {
     pendingCount,
     getPendingCaptures,
@@ -41,19 +40,22 @@ export default function PendingCapturesList({
   const [isExpanded, setIsExpanded] = useState(!collapsible);
   const [showAll, setShowAll] = useState(false);
 
-  // Load captures
+  // Load captures with memoized callback
+  const loadCaptures = useCallback(async () => {
+    const pending = await getPendingCaptures();
+    setCaptures(pending);
+  }, [getPendingCaptures]);
+
+  // Polling with visibilitychange awareness
   useEffect(() => {
-    const loadCaptures = async () => {
-      const pending = await getPendingCaptures();
-      setCaptures(pending);
-    };
-
-    loadCaptures();
-
-    // Refresh when pending count changes
-    const interval = setInterval(loadCaptures, 2000);
-    return () => clearInterval(interval);
-  }, [getPendingCaptures, pendingCount]);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => { loadCaptures(); interval = setInterval(loadCaptures, 2000); };
+    const stopPolling = () => { if (interval) { clearInterval(interval); interval = null; } };
+    const handleVisibility = () => { if (document.hidden) { stopPolling(); } else { startPolling(); } };
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => { stopPolling(); document.removeEventListener('visibilitychange', handleVisibility); };
+  }, [loadCaptures, pendingCount]);
 
   if (captures.length === 0) {
     return null;
@@ -63,7 +65,7 @@ export default function PendingCapturesList({
   const hasMore = captures.length > maxItems;
 
   const handleRetry = async (localId: string) => {
-    await syncCapture(localId, userId ?? null);
+    await syncCapture(localId, getToken);
     // Refresh captures
     const pending = await getPendingCaptures();
     setCaptures(pending);
@@ -127,22 +129,13 @@ export default function PendingCapturesList({
       )}
 
       {/* List */}
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="space-y-2 overflow-hidden"
-          >
-            {displayedCaptures.map((capture) => (
-              <motion.div
-                key={capture.localId}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                className="flex items-center gap-3 p-3 bg-surface-elevated rounded-xl border border-border"
-              >
+      {isExpanded && (
+        <div className="space-y-2 overflow-hidden animate-[fadeIn_0.3s_ease-out]">
+          {displayedCaptures.map((capture) => (
+            <div
+              key={capture.localId}
+              className="flex items-center gap-3 p-3 bg-surface-elevated rounded-xl border border-border animate-[slideInLeft_0.3s_ease-out] transition-all duration-300"
+            >
                 {/* Thumbnail */}
                 <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-surface flex-shrink-0">
                   {capture.thumbnail ? (
@@ -215,7 +208,7 @@ export default function PendingCapturesList({
                     <Trash2 className="w-4 h-4 text-red-400" />
                   </button>
                 </div>
-              </motion.div>
+              </div>
             ))}
 
             {/* Show more button */}
@@ -227,9 +220,8 @@ export default function PendingCapturesList({
                 Voir {captures.length - maxItems} capture(s) de plus
               </button>
             )}
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }

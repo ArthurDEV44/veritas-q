@@ -1,7 +1,6 @@
 'use client';
 
 import { use, useState } from 'react';
-import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -197,11 +196,7 @@ export default function SealDetailPage({ params }: SealDetailPageProps) {
       </div>
 
       {/* Media preview */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative aspect-video bg-surface rounded-xl border border-border overflow-hidden flex items-center justify-center"
-      >
+      <div className="relative aspect-video bg-surface rounded-xl border border-border overflow-hidden flex items-center justify-center animate-[slideUp_0.3s_ease-out]">
         <div className="w-24 h-24 rounded-full bg-surface-elevated flex items-center justify-center">
           <MediaIcon className="w-12 h-12 text-foreground/40" />
         </div>
@@ -218,17 +213,12 @@ export default function SealDetailPage({ params }: SealDetailPageProps) {
             C2PA Embedded
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* Info sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left column - Capture info */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-          className="space-y-4"
-        >
+        <div className="space-y-4 animate-[slideInRight_0.3s_ease-out]">
           {/* Date & Time */}
           <div className="p-4 bg-surface-elevated rounded-xl border border-border space-y-3">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -290,15 +280,10 @@ export default function SealDetailPage({ params }: SealDetailPageProps) {
               )}
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Right column - Cryptographic data */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
-          className="space-y-4"
-        >
+        <div className="space-y-4 animate-[slideInRight_0.3s_ease-out]">
           {/* Content hash */}
           <div className="p-4 bg-surface-elevated rounded-xl border border-border space-y-2">
             <div className="flex items-center justify-between">
@@ -373,16 +358,11 @@ export default function SealDetailPage({ params }: SealDetailPageProps) {
               {seal.public_key.slice(0, 128)}...
             </p>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="flex flex-wrap gap-3 pt-4 border-t border-border"
-      >
+      <div className="flex flex-wrap gap-3 pt-4 border-t border-border animate-[fadeIn_0.3s_ease-out]">
         <Link
           href={`/verify?seal_id=${seal.id}`}
           className="flex items-center gap-2 px-4 py-2 bg-quantum text-black font-medium rounded-lg hover:bg-quantum-dim transition-colors"
@@ -398,7 +378,7 @@ export default function SealDetailPage({ params }: SealDetailPageProps) {
           <Download className="w-4 h-4" />
           <span>Exporter</span>
         </button>
-      </motion.div>
+      </div>
 
       {/* Export Modal */}
       <ExportModal

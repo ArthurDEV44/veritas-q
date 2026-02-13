@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   Image as ImageIcon,
@@ -79,11 +78,7 @@ export default function SealCard({ seal, compact = false }: SealCardProps) {
   if (compact) {
     return (
       <Link href={`/dashboard/seals/${seal.id}`}>
-        <motion.div
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="flex items-center gap-3 p-3 bg-surface-elevated rounded-xl border border-border hover:border-quantum/30 transition-colors cursor-pointer"
-        >
+        <div className="flex items-center gap-3 p-3 bg-surface-elevated rounded-xl border border-border hover:border-quantum/30 transition-colors cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform">
           {/* Media type icon */}
           <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center flex-shrink-0">
             <MediaIcon className="w-5 h-5 text-foreground/60" />
@@ -110,18 +105,14 @@ export default function SealCard({ seal, compact = false }: SealCardProps) {
           {hasLocation && (
             <MapPin className="w-4 h-4 text-quantum/60 flex-shrink-0" />
           )}
-        </motion.div>
+        </div>
       </Link>
     );
   }
 
   return (
     <Link href={`/dashboard/seals/${seal.id}`}>
-      <motion.div
-        whileHover={{ y: -2 }}
-        whileTap={{ scale: 0.98 }}
-        className="bg-surface-elevated rounded-xl border border-border hover:border-quantum/30 overflow-hidden transition-colors cursor-pointer"
-      >
+      <div className="bg-surface-elevated rounded-xl border border-border hover:border-quantum/30 overflow-hidden transition-colors cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] transition-transform">
         {/* Thumbnail area */}
         <div className="relative aspect-video bg-surface flex items-center justify-center">
           <div className="w-16 h-16 rounded-full bg-surface-elevated flex items-center justify-center">
@@ -205,7 +196,7 @@ export default function SealCard({ seal, compact = false }: SealCardProps) {
             </p>
           </div>
         </div>
-      </motion.div>
+      </div>
     </Link>
   );
 }

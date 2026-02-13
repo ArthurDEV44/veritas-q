@@ -1,27 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { Camera, AlertTriangle, Settings, ExternalLink } from "lucide-react";
+import { isIOS, getBrowser } from "@/lib/device";
 
 type PermissionState = "prompt" | "granted" | "denied" | "unsupported" | "loading";
-
-// Detect iOS
-function isIOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
-}
-
-// Detect browser
-function getBrowser(): string {
-  if (typeof navigator === "undefined") return "unknown";
-  const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes("chrome") && !ua.includes("edg")) return "Chrome";
-  if (ua.includes("safari") && !ua.includes("chrome")) return "Safari";
-  if (ua.includes("firefox")) return "Firefox";
-  if (ua.includes("edg")) return "Edge";
-  return "votre navigateur";
-}
 
 interface CameraPermissionGuardProps {
   children: React.ReactNode;
@@ -96,57 +79,49 @@ export default function CameraPermissionGuard({
   // Show unsupported message
   if (permission === "unsupported") {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col items-center justify-center gap-6 p-8 text-center"
-      >
+      <div className="flex flex-col items-center justify-center gap-6 p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-300">
         <div className="w-20 h-20 rounded-full bg-amber-500/20 flex items-center justify-center">
           <AlertTriangle className="w-10 h-10 text-amber-500" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-xl font-semibold">Caméra non disponible</h2>
+          <h2 className="text-xl font-semibold">Camera non disponible</h2>
           <p className="text-foreground/60 max-w-sm">
-            Votre navigateur ne supporte pas l&apos;accès à la caméra ou aucune
-            caméra n&apos;est connectée à cet appareil.
+            Votre navigateur ne supporte pas l&apos;acces a la camera ou aucune
+            camera n&apos;est connectee a cet appareil.
           </p>
         </div>
         <div className="bg-surface-elevated rounded-xl p-4 text-left text-sm max-w-sm">
           <p className="font-medium mb-2">Solutions possibles :</p>
           <ul className="text-foreground/60 space-y-1.5">
             <li className="flex items-start gap-2">
-              <span className="text-quantum mt-0.5">•</span>
+              <span className="text-quantum mt-0.5">*</span>
               Utilisez un navigateur moderne (Chrome, Safari, Firefox)
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-quantum mt-0.5">•</span>
-              Vérifiez que votre appareil possède une caméra
+              <span className="text-quantum mt-0.5">*</span>
+              Verifiez que votre appareil possede une camera
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-quantum mt-0.5">•</span>
-              Assurez-vous d&apos;accéder au site en HTTPS
+              <span className="text-quantum mt-0.5">*</span>
+              Assurez-vous d&apos;acceder au site en HTTPS
             </li>
           </ul>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   // Show denied message with instructions
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col items-center justify-center gap-6 p-8 text-center"
-    >
+    <div className="flex flex-col items-center justify-center gap-6 p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-300">
       <div className="w-20 h-20 rounded-full bg-red-500/20 flex items-center justify-center">
         <Camera className="w-10 h-10 text-red-500" />
       </div>
       <div className="space-y-2">
-        <h2 className="text-xl font-semibold">Accès caméra bloqué</h2>
+        <h2 className="text-xl font-semibold">Acces camera bloque</h2>
         <p className="text-foreground/60 max-w-sm">
-          Veritas Q nécessite l&apos;accès à votre caméra pour capturer et
-          sceller des médias authentifiés.
+          Veritas Q necessite l&apos;acces a votre camera pour capturer et
+          sceller des medias authentifies.
         </p>
       </div>
 
@@ -154,7 +129,7 @@ export default function CameraPermissionGuard({
         <div className="flex items-center gap-2 mb-3">
           <Settings className="w-5 h-5 text-quantum" />
           <p className="font-medium">
-            Activer l&apos;accès dans {getBrowser()}
+            Activer l&apos;acces dans {getBrowser()}
           </p>
         </div>
 
@@ -162,17 +137,17 @@ export default function CameraPermissionGuard({
           <ol className="text-sm text-foreground/60 space-y-2">
             <li className="flex items-start gap-2">
               <span className="font-medium text-foreground/80">1.</span>
-              Ouvrez <span className="font-medium">Réglages</span> sur votre
+              Ouvrez <span className="font-medium">Reglages</span> sur votre
               appareil
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium text-foreground/80">2.</span>
-              Faites défiler jusqu&apos;à <span className="font-medium">Safari</span>
+              Faites defiler jusqu&apos;a <span className="font-medium">Safari</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium text-foreground/80">3.</span>
               Appuyez sur{" "}
-              <span className="font-medium">Caméra</span> et sélectionnez{" "}
+              <span className="font-medium">Camera</span> et selectionnez{" "}
               <span className="font-medium">Autoriser</span>
             </li>
             <li className="flex items-start gap-2">
@@ -184,20 +159,16 @@ export default function CameraPermissionGuard({
           <ol className="text-sm text-foreground/60 space-y-2">
             <li className="flex items-start gap-2">
               <span className="font-medium text-foreground/80">1.</span>
-              Cliquez sur l&apos;icône de cadenas{" "}
-              <span className="inline-block px-1.5 py-0.5 bg-surface rounded text-xs">
-                🔒
-              </span>{" "}
-              dans la barre d&apos;adresse
+              Cliquez sur l&apos;icone de cadenas dans la barre d&apos;adresse
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium text-foreground/80">2.</span>
-              Trouvez <span className="font-medium">Caméra</span> dans les
-              paramètres du site
+              Trouvez <span className="font-medium">Camera</span> dans les
+              parametres du site
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium text-foreground/80">3.</span>
-              Changez de <span className="font-medium">Bloquer</span> à{" "}
+              Changez de <span className="font-medium">Bloquer</span> a{" "}
               <span className="font-medium">Autoriser</span>
             </li>
             <li className="flex items-start gap-2">
@@ -215,6 +186,6 @@ export default function CameraPermissionGuard({
         <ExternalLink className="w-4 h-4" />
         Recharger la page
       </button>
-    </motion.div>
+    </div>
   );
 }

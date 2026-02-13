@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Filter,
   Image as ImageIcon,
@@ -58,10 +57,9 @@ export default function SealFilters({
       {/* Filter bar */}
       <div className="flex items-center justify-between gap-4">
         {/* Filter toggle button */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+          className={`transition-transform active:scale-95 flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
             showFilters || activeFiltersCount > 0
               ? 'bg-quantum/10 border-quantum/30 text-quantum'
               : 'bg-surface-elevated border-border hover:border-quantum/30'
@@ -79,7 +77,7 @@ export default function SealFilters({
               showFilters ? 'rotate-180' : ''
             }`}
           />
-        </motion.button>
+        </button>
 
         {/* View toggle */}
         <div className="flex items-center gap-1 p-1 bg-surface-elevated rounded-lg border border-border">
@@ -109,14 +107,8 @@ export default function SealFilters({
       </div>
 
       {/* Expandable filters panel */}
-      <AnimatePresence>
-        {showFilters && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden"
-          >
+      {showFilters && (
+        <div className="animate-[slideDown_0.3s_ease-out] overflow-hidden">
             <div className="p-4 bg-surface-elevated rounded-xl border border-border space-y-4">
               {/* Media type filter */}
               <div className="space-y-2">
@@ -195,9 +187,8 @@ export default function SealFilters({
                 </div>
               )}
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
 
       {/* Active filters chips (when panel is closed) */}
       {!showFilters && activeFiltersCount > 0 && (

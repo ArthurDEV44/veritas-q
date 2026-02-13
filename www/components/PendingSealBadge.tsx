@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { Clock, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export type PendingStatus = 'pending' | 'syncing' | 'failed';
@@ -86,11 +85,7 @@ export default function PendingSealBadge({
   const positionClass = overlay && position ? positionClasses[position] : '';
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className={`${baseClasses} ${positionClass}`}
-    >
+    <div className={`animate-[scaleIn_0.3s_ease-out] ${baseClasses} ${positionClass}`}>
       {status === 'syncing' ? (
         <Icon className={`${sizeConfig.icon} animate-spin`} />
       ) : (
@@ -111,7 +106,7 @@ export default function PendingSealBadge({
           <RefreshCw className={`${sizeConfig.icon} hover:rotate-180 transition-transform duration-300`} />
         </button>
       )}
-    </motion.div>
+    </div>
   );
 }
 

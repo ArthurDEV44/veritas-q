@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield,
   ShieldCheck,
@@ -230,29 +229,16 @@ export default function DeviceAttestationBadge({
       </div>
 
       {/* Error message */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="absolute top-full left-0 right-0 mt-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2 z-20"
-          >
-            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-            <p className="text-xs text-red-500">{error}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {error && (
+        <div className="animate-[slideDown_0.3s_ease-out] absolute top-full left-0 right-0 mt-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2 z-20">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+          <p className="text-xs text-red-500">{error}</p>
+        </div>
+      )}
 
       {/* Details modal */}
-      <AnimatePresence>
-        {showDetails && attestation && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute top-full left-0 right-0 mt-2 p-4 rounded-xl bg-surface-elevated border border-border shadow-lg z-10"
-          >
+      {showDetails && attestation && (
+        <div className="animate-[scaleIn_0.3s_ease-out] absolute top-full left-0 right-0 mt-2 p-4 rounded-xl bg-surface-elevated border border-border shadow-lg z-10">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold text-foreground">
                 Détails de l&apos;attestation
@@ -311,9 +297,8 @@ export default function DeviceAttestationBadge({
                 </span>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }

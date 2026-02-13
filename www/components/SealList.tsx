@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, FileX2, RefreshCw } from 'lucide-react';
 import {
   useSealsInfiniteQuery,
@@ -108,14 +107,13 @@ export default function SealList({
             ? error.message
             : 'Impossible de charger les seals. Veuillez reessayer.'}
         </p>
-        <motion.button
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={() => refetch()}
-          className="flex items-center gap-2 px-4 py-2 bg-surface-elevated hover:bg-surface rounded-lg border border-border transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-surface-elevated hover:bg-surface rounded-lg border border-border transition-colors transition-transform active:scale-95"
         >
           <RefreshCw className="w-4 h-4" />
           <span>Reessayer</span>
-        </motion.button>
+        </button>
       </div>
     );
   }
@@ -149,42 +147,23 @@ export default function SealList({
       </div>
 
       {/* Seals grid/list */}
-      <AnimatePresence mode="popLayout">
-        {view === 'grid' ? (
-          <motion.div
-            layout
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-          >
-            {seals.map((seal, index) => (
-              <motion.div
-                key={seal.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ delay: index * 0.05, duration: 0.2 }}
-              >
-                <SealCard seal={seal} />
-              </motion.div>
-            ))}
-          </motion.div>
-        ) : (
-          <motion.div layout className="space-y-2">
-            {seals.map((seal, index) => (
-              <motion.div
-                key={seal.id}
-                layout
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ delay: index * 0.03, duration: 0.2 }}
-              >
-                <SealCard seal={seal} compact />
-              </motion.div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {view === 'grid' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {seals.map((seal) => (
+            <div key={seal.id} className="animate-[fadeIn_0.3s_ease-out]">
+              <SealCard seal={seal} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {seals.map((seal) => (
+            <div key={seal.id} className="animate-[slideInRight_0.3s_ease-out]">
+              <SealCard seal={seal} compact />
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Load more trigger (for infinite scroll) */}
       <div ref={loadMoreRef} className="py-4 flex justify-center">
