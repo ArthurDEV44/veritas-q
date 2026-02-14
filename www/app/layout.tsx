@@ -4,8 +4,11 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { frFR } from "@clerk/localizations";
 import "./globals.css";
 import InstallBanner from "@/components/InstallBanner";
-import PWAStatus from "@/components/PWAStatus";
+import ConnectivityStatus from "@/components/ConnectivityStatus";
+import CommandPalette from "@/components/CommandPalette";
 import Header from "@/components/Header";
+import { QueryProvider } from "@/components/providers/QueryProvider";
+import { ToastProvider } from "@/components/ui/toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -53,9 +56,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  themeColor: "#000000",
+  userScalable: true,
+  themeColor: "#06060a",
 };
 
 export const dynamic = "force-dynamic";
@@ -69,13 +71,22 @@ export default function RootLayout({
     <ClerkProvider localization={frFR}>
       <html lang="fr" className="dark">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen`}
+          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground min-h-screen relative`}
         >
-          <div className="flex flex-col min-h-screen">
+          <QueryProvider>
+          <ToastProvider position="bottom-right">
+          {/* Skip-to-content link for screen readers */}
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-primary focus:text-primary-foreground focus:text-sm focus:font-medium focus:outline-none"
+          >
+            Aller au contenu principal
+          </a>
+          <div className="flex flex-col min-h-screen isolate">
             <Header />
 
             {/* Main content area */}
-            <main className="flex-1 flex flex-col">
+            <main id="main-content" className="flex-1 flex flex-col">
               <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
                 {children}
               </div>
@@ -92,8 +103,11 @@ export default function RootLayout({
           </div>
 
           {/* PWA Components */}
-          <PWAStatus />
+          <ConnectivityStatus />
           <InstallBanner />
+          <CommandPalette />
+          </ToastProvider>
+          </QueryProvider>
         </body>
       </html>
     </ClerkProvider>

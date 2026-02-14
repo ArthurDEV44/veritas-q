@@ -1,6 +1,6 @@
 'use client';
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useAuth } from '@clerk/nextjs';
 import { useCallback } from 'react';
 import { API_URL, getAuthHeaders } from '@/lib/api';
@@ -146,6 +146,25 @@ export function useSealsInfiniteQuery(
     initialPageParam: 1,
     enabled: !!userId,
     staleTime: 60 * 1000, // 1 minute
+  });
+}
+
+/**
+ * Hook for paginated (page-by-page) seal list with CossUI Pagination
+ */
+export function useSealsPaginatedQuery(
+  filters: SealFilters = {},
+  page: number = 1,
+  limit: number = 20
+) {
+  const { getToken, userId } = useAuth();
+
+  return useQuery({
+    queryKey: ['seals', 'paginated', filters, page, limit, userId],
+    queryFn: () => fetchSeals(page, limit, filters, getToken),
+    enabled: !!userId,
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 }
 

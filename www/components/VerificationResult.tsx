@@ -3,14 +3,16 @@
 import {
   ShieldCheck,
   ShieldX,
+  ShieldAlert,
   Search,
   Clock,
   Hash,
   Cpu,
   Link2,
-  AlertTriangle,
   Info,
   CheckCircle,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import type {
   UnifiedVerificationResult,
@@ -25,6 +27,38 @@ import {
   getConfidenceLevel,
 } from "@/lib/verification";
 import SealBadge from "@/components/SealBadge";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardPanel,
+  CardFooter,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+} from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionPanel,
+} from "@/components/ui/accordion";
+import { Separator } from "@/components/ui/separator";
+import {
+  Progress,
+  ProgressTrack,
+  ProgressIndicator,
+} from "@/components/ui/progress";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipPopup,
+} from "@/components/ui/tooltip";
 
 interface VerificationResultProps {
   result: UnifiedVerificationResult;
@@ -36,7 +70,7 @@ export default function VerificationResult({
   onReset,
 }: VerificationResultProps) {
   return (
-    <div className="w-full max-w-lg animate-[scaleIn_0.3s_ease-out]">
+    <div className="w-full max-w-lg mx-auto flex flex-col gap-4">
       {result.method === "classic" && result.classic && (
         <ClassicResult result={result.classic} success={result.success} />
       )}
@@ -47,24 +81,22 @@ export default function VerificationResult({
         <SoftBindingResult result={result.resolution} />
       )}
       {result.error && !result.success && (
-        <ErrorDisplay message={result.error} />
+        <ErrorResult message={result.error} />
       )}
 
-      <div className="mt-6 flex justify-center animate-[fadeIn_0.3s_ease-out]">
-        <button
-          onClick={onReset}
-          className="px-6 py-2 bg-surface-elevated hover:bg-surface-elevated/80 rounded-full border border-border transition-colors text-sm"
-        >
+      <div className="flex justify-center pt-2 animate-fade-in">
+        <Button variant="outline" onClick={onReset}>
+          <RotateCcw />
           Vérifier une autre image
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 // Classic Verification Result
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 
 function ClassicResult({
   result,
@@ -74,186 +106,218 @@ function ClassicResult({
   success: boolean;
 }) {
   return (
-    <div
-      className={`flex flex-col items-center gap-4 p-8 rounded-2xl ${
-        success ? "bg-green-500/10" : "bg-red-500/10"
-      }`}
-    >
-      <div
-        className={success ? "quantum-glow animate-[scaleIn_0.3s_ease-out]" : "animate-[scaleIn_0.3s_ease-out]"}
-        style={
+    <Card className="overflow-hidden">
+      {/* Hero section */}
+      <CardPanel
+        className={`flex flex-col items-center gap-4 py-8 ${
           success
-            ? { boxShadow: "0 0 40px rgba(34, 197, 94, 0.4)", borderRadius: "999px" }
-            : {}
-        }
-      >
-        {success ? (
-          <ShieldCheck className="w-20 h-20 text-green-500" />
-        ) : (
-          <ShieldX className="w-20 h-20 text-red-500" />
-        )}
-      </div>
-      <h2
-        className={`text-2xl font-bold ${
-          success ? "text-green-500" : "text-red-500"
+            ? "bg-success/4 border-b border-success/16"
+            : "bg-destructive/4 border-b border-destructive/16"
         }`}
       >
-        {success ? "AUTHENTIQUE" : "INVALIDE"}
-      </h2>
-      {/* SealBadge for valid verifications */}
-      {success && (
+        <div
+          className={`animate-scale-in ${
+            success ? "shield-verified" : "shield-failed"
+          }`}
+        >
+          {success ? (
+            <div className="quantum-glow rounded-full p-1">
+              <ShieldCheck className="size-20 text-success" />
+            </div>
+          ) : (
+            <ShieldX className="size-20 text-destructive" />
+          )}
+        </div>
+        <h2
+          className={`text-2xl font-bold ${
+            success ? "text-success" : "text-destructive"
+          }`}
+        >
+          {success ? "AUTHENTIQUE" : "INVALIDE"}
+        </h2>
         <SealBadge
-          status="valid"
+          status={success ? "valid" : "invalid"}
           size="large"
           clickable={false}
           trustTier="tier1"
         />
-      )}
-      {!success && (
-        <SealBadge
-          status="invalid"
-          size="large"
-          clickable={false}
-        />
-      )}
-      <p className="text-foreground/60 text-center max-w-sm">{result.details}</p>
-    </div>
+        <CardDescription className="text-center max-w-sm">
+          {result.details}
+        </CardDescription>
+      </CardPanel>
+    </Card>
   );
 }
 
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 // C2PA Verification Result
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 
 function C2paResult({ result }: { result: C2paVerifyResponse }) {
-  const { quantum_seal, c2pa_valid, claim_generator, validation_errors } = result;
+  const { quantum_seal, c2pa_valid, claim_generator, validation_errors } =
+    result;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div
-        className={`flex flex-col items-center gap-4 p-6 rounded-2xl ${
-          c2pa_valid ? "bg-green-500/10" : "bg-red-500/10"
-        }`}
-      >
-        <div
-          className={c2pa_valid ? "quantum-glow animate-[scaleIn_0.3s_ease-out]" : "animate-[scaleIn_0.3s_ease-out]"}
-          style={
+      {/* Hero Card */}
+      <Card className="overflow-hidden">
+        <CardPanel
+          className={`flex flex-col items-center gap-4 py-8 ${
             c2pa_valid
-              ? { boxShadow: "0 0 40px rgba(34, 197, 94, 0.4)", borderRadius: "999px" }
-              : {}
-          }
+              ? "bg-success/4 border-b border-success/16"
+              : "bg-destructive/4 border-b border-destructive/16"
+          }`}
         >
-          {c2pa_valid ? (
-            <ShieldCheck className="w-16 h-16 text-green-500" />
-          ) : (
-            <ShieldX className="w-16 h-16 text-red-500" />
-          )}
-        </div>
-        <div className="text-center">
-          <h2
-            className={`text-xl font-bold ${
-              c2pa_valid ? "text-green-500" : "text-red-500"
+          <div
+            className={`animate-scale-in ${
+              c2pa_valid ? "shield-verified" : "shield-failed"
             }`}
           >
-            {c2pa_valid ? "AUTHENTIQUE" : "INVALIDE"}
-          </h2>
-          {/* SealBadge for C2PA verification */}
-          <div className="mt-3">
+            {c2pa_valid ? (
+              <div className="quantum-glow rounded-full p-1">
+                <ShieldCheck className="size-16 text-success" />
+              </div>
+            ) : (
+              <ShieldX className="size-16 text-destructive" />
+            )}
+          </div>
+          <div className="text-center space-y-2">
+            <h2
+              className={`text-xl font-bold ${
+                c2pa_valid ? "text-success" : "text-destructive"
+              }`}
+            >
+              {c2pa_valid ? "AUTHENTIQUE" : "INVALIDE"}
+            </h2>
             <SealBadge
               status={c2pa_valid ? "valid" : "invalid"}
               size="medium"
               clickable={false}
               trustTier="tier1"
             />
+            <p className="text-muted-foreground text-sm">
+              Manifest C2PA {c2pa_valid ? "valide" : "invalide"}
+            </p>
           </div>
-          <p className="text-foreground/60 text-sm mt-2">
-            Manifest C2PA {c2pa_valid ? "valide" : "invalide"}
-          </p>
-        </div>
-      </div>
+        </CardPanel>
+      </Card>
 
-      {/* Quantum Seal Details */}
-      {quantum_seal && (
-        <div className="bg-surface-elevated rounded-xl p-4 space-y-3 animate-[fadeIn_0.3s_ease-out]">
-          <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-            <Info className="w-4 h-4 text-quantum" />
-            Détails du Sceau Quantum
-          </h3>
+      {/* Details Accordion */}
+      <Card>
+        <Accordion multiple>
+          {/* Quantum Seal Details */}
+          {quantum_seal && (
+            <AccordionItem value="quantum-seal">
+              <AccordionTrigger className="px-6">
+                <span className="flex items-center gap-2">
+                  <Info className="size-4 text-primary" />
+                  Détails du Sceau Quantum
+                </span>
+              </AccordionTrigger>
+              <AccordionPanel className="px-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <DetailItem
+                    icon={<Cpu className="size-4" />}
+                    label="Source QRNG"
+                    value={formatQrngSource(quantum_seal.qrng_source)}
+                    tooltip="Générateur de nombres aléatoires quantiques utilisé pour l'entropie"
+                  />
+                  <DetailItem
+                    icon={<Clock className="size-4" />}
+                    label="Horodatage"
+                    value={formatTimestamp(quantum_seal.capture_timestamp)}
+                  />
+                  <DetailItem
+                    icon={<Hash className="size-4" />}
+                    label="Hash contenu"
+                    value={truncateHash(quantum_seal.content_hash)}
+                    mono
+                  />
+                  <DetailItem
+                    icon={<ShieldCheck className="size-4" />}
+                    label="Signature"
+                    value={`ML-DSA — ${quantum_seal.signature_size} octets`}
+                    tooltip="ML-DSA-65 (FIPS 204) — Signature post-quantique"
+                  />
+                </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <DetailRow
-              icon={<Cpu className="w-4 h-4" />}
-              label="Source QRNG"
-              value={formatQrngSource(quantum_seal.qrng_source)}
-            />
-            <DetailRow
-              icon={<Clock className="w-4 h-4" />}
-              label="Horodatage"
-              value={formatTimestamp(quantum_seal.capture_timestamp)}
-            />
-            <DetailRow
-              icon={<Hash className="w-4 h-4" />}
-              label="Hash contenu"
-              value={truncateHash(quantum_seal.content_hash)}
-              mono
-            />
-            <DetailRow
-              icon={<ShieldCheck className="w-4 h-4" />}
-              label="Signature ML-DSA"
-              value={`${quantum_seal.signature_size} octets`}
-            />
-          </div>
-
-          {/* Blockchain Anchor */}
-          {quantum_seal.blockchain_anchor && (
-            <div className="pt-3 border-t border-border">
-              <DetailRow
-                icon={<Link2 className="w-4 h-4 text-quantum" />}
-                label="Ancrage Blockchain"
-                value={`${quantum_seal.blockchain_anchor.chain} (${quantum_seal.blockchain_anchor.network})`}
-                highlight
-              />
-              <p className="text-xs text-foreground/50 mt-1 font-mono break-all">
-                TX: {truncateHash(quantum_seal.blockchain_anchor.transaction_id, 24)}
-              </p>
-            </div>
+                {/* Blockchain Anchor */}
+                {quantum_seal.blockchain_anchor && (
+                  <>
+                    <Separator className="my-4" />
+                    <div className="space-y-2">
+                      <DetailItem
+                        icon={<Link2 className="size-4 text-primary" />}
+                        label="Ancrage Blockchain"
+                        value={`${quantum_seal.blockchain_anchor.chain} (${quantum_seal.blockchain_anchor.network})`}
+                        highlight
+                      />
+                      <p className="text-xs text-muted-foreground font-mono break-all pl-6">
+                        TX:{" "}
+                        {truncateHash(
+                          quantum_seal.blockchain_anchor.transaction_id,
+                          24,
+                        )}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </AccordionPanel>
+            </AccordionItem>
           )}
-        </div>
-      )}
 
-      {/* Claim Generator */}
-      {claim_generator && (
-        <div className="bg-surface rounded-lg p-3 text-sm animate-[fadeIn_0.3s_ease-out]">
-          <span className="text-foreground/50">Générateur: </span>
-          <span className="text-foreground/80">{claim_generator}</span>
-        </div>
-      )}
+          {/* Claim Generator */}
+          {claim_generator && (
+            <AccordionItem value="generator">
+              <AccordionTrigger className="px-6">
+                <span className="flex items-center gap-2">
+                  <Cpu className="size-4 text-muted-foreground" />
+                  Générateur
+                </span>
+              </AccordionTrigger>
+              <AccordionPanel className="px-6">
+                <Badge variant="outline" size="lg">
+                  {claim_generator}
+                </Badge>
+              </AccordionPanel>
+            </AccordionItem>
+          )}
 
-      {/* Validation Errors */}
-      {validation_errors.length > 0 && (
-        <div className="bg-red-500/10 rounded-lg p-3 space-y-2 animate-[fadeIn_0.3s_ease-out]">
-          <h4 className="text-sm font-semibold text-red-400 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            Erreurs de validation
-          </h4>
-          <ul className="text-sm text-red-300 space-y-1">
-            {validation_errors.map((error, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="text-red-400">•</span>
-                {error}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          {/* Validation Errors */}
+          {validation_errors.length > 0 && (
+            <AccordionItem value="errors">
+              <AccordionTrigger className="px-6">
+                <span className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 text-destructive" />
+                  Erreurs de validation
+                  <Badge variant="error" size="sm">
+                    {validation_errors.length}
+                  </Badge>
+                </span>
+              </AccordionTrigger>
+              <AccordionPanel className="px-6">
+                <ul className="space-y-2">
+                  {validation_errors.map((error, i) => (
+                    <li key={i}>
+                      <Alert variant="error">
+                        <AlertTriangle />
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
+                    </li>
+                  ))}
+                </ul>
+              </AccordionPanel>
+            </AccordionItem>
+          )}
+        </Accordion>
+      </Card>
     </div>
   );
 }
 
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 // Soft Binding Resolution Result
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 
 function SoftBindingResult({ result }: { result: ResolveResponse }) {
   const { found, count, matches } = result;
@@ -261,16 +325,18 @@ function SoftBindingResult({ result }: { result: ResolveResponse }) {
 
   if (!found || count === 0) {
     return (
-      <div className="flex flex-col items-center gap-4 p-8 rounded-2xl bg-surface-elevated">
-        <Search className="w-16 h-16 text-foreground/40" />
-        <h2 className="text-xl font-bold text-foreground/60">
-          AUCUN SCEAU TROUVÉ
-        </h2>
-        <p className="text-foreground/50 text-center max-w-sm">
-          Cette image ne correspond à aucun sceau enregistré dans notre base de
-          données.
-        </p>
-      </div>
+      <Card className="overflow-hidden">
+        <CardPanel className="flex flex-col items-center gap-4 py-8">
+          <Search className="size-16 text-muted-foreground animate-scale-in" />
+          <CardTitle className="text-muted-foreground">
+            AUCUN SCEAU TROUVÉ
+          </CardTitle>
+          <CardDescription className="text-center max-w-sm">
+            Cette image ne correspond à aucun sceau enregistré dans notre base de
+            données.
+          </CardDescription>
+        </CardPanel>
+      </Card>
     );
   }
 
@@ -278,15 +344,14 @@ function SoftBindingResult({ result }: { result: ResolveResponse }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-amber-500/10">
-        <div className="animate-[scaleIn_0.3s_ease-out]">
-          <Search className="w-16 h-16 text-amber-500" />
-        </div>
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-amber-500">SCEAU RETROUVE</h2>
-          {/* SealBadge for found seals - show as tampered if distance > 0 */}
-          <div className="mt-3">
+      {/* Hero Card */}
+      <Card className="overflow-hidden">
+        <CardPanel className="flex flex-col items-center gap-4 py-8 bg-warning/4 border-b border-warning/16">
+          <div className="animate-scale-in">
+            <Search className="size-16 text-warning" />
+          </div>
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-bold text-warning">SCEAU RETROUVÉ</h2>
             <SealBadge
               sealId={bestMatch.seal_id}
               status={bestMatch.hamming_distance > 0 ? "tampered" : "valid"}
@@ -295,143 +360,184 @@ function SoftBindingResult({ result }: { result: ResolveResponse }) {
               showExternalIcon={true}
               trustTier="tier1"
             />
+            <p className="text-muted-foreground text-sm">
+              via hash perceptuel
+            </p>
           </div>
-          <p className="text-foreground/60 text-sm mt-2">
-            via hash perceptuel
-          </p>
-        </div>
-      </div>
+        </CardPanel>
+      </Card>
 
-      {/* Best Match Details */}
-      <div className="bg-surface-elevated rounded-xl p-4 space-y-3 animate-[fadeIn_0.3s_ease-out]">
-        <h3 className="text-sm font-semibold text-foreground/80 flex items-center gap-2">
-          <CheckCircle className="w-4 h-4 text-amber-500" />
-          Meilleure correspondance
-        </h3>
-
-        <div className="space-y-3">
-          {/* Confidence Indicator */}
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-foreground/60">Confiance</span>
-            <div className="flex items-center gap-2">
-              <ConfidenceBar distance={bestMatch.hamming_distance} />
-              <span className={`text-sm font-medium ${confidence.color}`}>
-                {confidence.label}
-              </span>
+      {/* Match Details Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CheckCircle className="size-4 text-warning" />
+            Meilleure correspondance
+          </CardTitle>
+        </CardHeader>
+        <CardPanel>
+          <div className="space-y-4">
+            {/* Confidence Indicator */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Confiance</span>
+              <div className="flex items-center gap-3">
+                <ConfidenceProgress distance={bestMatch.hamming_distance} />
+                <Badge
+                  variant={
+                    confidence.level === "exact" || confidence.level === "high"
+                      ? "success"
+                      : confidence.level === "medium"
+                        ? "warning"
+                        : "error"
+                  }
+                  size="sm"
+                >
+                  {confidence.label}
+                </Badge>
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <DetailRow
-              icon={<Hash className="w-4 h-4" />}
-              label="Distance Hamming"
-              value={`${bestMatch.hamming_distance} bits`}
-            />
-            <DetailRow
-              icon={<Clock className="w-4 h-4" />}
-              label="Créé le"
-              value={new Date(bestMatch.created_at).toLocaleDateString("fr-FR")}
-            />
-            <DetailRow
-              icon={<ShieldCheck className="w-4 h-4" />}
-              label="ID du sceau"
-              value={truncateHash(bestMatch.seal_id, 12)}
-              mono
-            />
-            <DetailRow
-              icon={<Info className="w-4 h-4" />}
-              label="Type de média"
-              value={bestMatch.media_type}
-            />
-          </div>
-        </div>
+            <Separator />
 
-        {/* Warning about modification */}
-        {bestMatch.hamming_distance > 0 && (
-          <div className="pt-3 border-t border-border">
-            <div className="flex items-start gap-2 text-amber-400 text-sm">
-              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <p>
-                Image modifiée (compression, redimensionnement ou recadrage
-                détecté). Le sceau original a été retrouvé.
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              <DetailItem
+                icon={<Hash className="size-4" />}
+                label="Distance Hamming"
+                value={`${bestMatch.hamming_distance} bits`}
+              />
+              <DetailItem
+                icon={<Clock className="size-4" />}
+                label="Créé le"
+                value={new Date(bestMatch.created_at).toLocaleDateString(
+                  "fr-FR",
+                )}
+              />
+              <DetailItem
+                icon={<ShieldCheck className="size-4" />}
+                label="ID du sceau"
+                value={truncateHash(bestMatch.seal_id, 12)}
+                mono
+              />
+              <DetailItem
+                icon={<Info className="size-4" />}
+                label="Type de média"
+                value={bestMatch.media_type}
+              />
             </div>
+
+            {/* Modification warning */}
+            {bestMatch.hamming_distance > 0 && (
+              <>
+                <Separator />
+                <Alert variant="warning">
+                  <ShieldAlert />
+                  <AlertTitle>Image modifiée</AlertTitle>
+                  <AlertDescription>
+                    Compression, redimensionnement ou recadrage détecté. Le sceau
+                    original a été retrouvé.
+                  </AlertDescription>
+                </Alert>
+              </>
+            )}
           </div>
+        </CardPanel>
+
+        {/* Other matches */}
+        {count > 1 && (
+          <CardFooter className="border-t">
+            <Badge variant="outline" size="sm">
+              {count - 1} autre(s) correspondance(s) trouvée(s)
+            </Badge>
+          </CardFooter>
         )}
-      </div>
-
-      {/* Other matches */}
-      {count > 1 && (
-        <div className="bg-surface rounded-lg p-3 text-sm text-foreground/60 animate-[fadeIn_0.3s_ease-out]">
-          <span>{count - 1} autre(s) correspondance(s) trouvée(s)</span>
-        </div>
-      )}
+      </Card>
     </div>
   );
 }
 
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 // Error Display
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 
-function ErrorDisplay({ message }: { message: string }) {
+function ErrorResult({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center gap-4 p-6 rounded-2xl bg-red-500/10">
-      <AlertTriangle className="w-12 h-12 text-red-500" />
-      <h3 className="text-lg font-semibold text-red-500">Erreur</h3>
-      <p className="text-foreground/60 text-center max-w-sm">{message}</p>
-    </div>
+    <Alert variant="error">
+      <AlertTriangle />
+      <AlertTitle>Erreur</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
   );
 }
 
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 // Helper Components
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════
 
-function DetailRow({
+function DetailItem({
   icon,
   label,
   value,
   mono = false,
   highlight = false,
+  tooltip,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   mono?: boolean;
   highlight?: boolean;
+  tooltip?: string;
 }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className={highlight ? "text-quantum" : "text-foreground/40"}>
+  const content = (
+    <div className="flex items-start gap-2">
+      <span
+        className={`mt-0.5 ${highlight ? "text-primary" : "text-muted-foreground"}`}
+      >
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="text-foreground/50 text-xs">{label}</p>
+        <p className="text-muted-foreground text-xs">{label}</p>
         <p
-          className={`text-foreground/80 truncate ${mono ? "font-mono text-xs" : ""}`}
+          className={`text-foreground truncate text-sm ${mono ? "font-mono text-xs" : ""}`}
         >
           {value}
         </p>
       </div>
     </div>
   );
+
+  if (tooltip) {
+    return (
+      <Tooltip>
+        <TooltipTrigger className="text-left cursor-help">
+          {content}
+        </TooltipTrigger>
+        <TooltipPopup>{tooltip}</TooltipPopup>
+      </Tooltip>
+    );
+  }
+
+  return content;
 }
 
-function ConfidenceBar({ distance }: { distance: number }) {
-  // 0 = 100% confidence, 10 = 0% confidence
+function ConfidenceProgress({ distance }: { distance: number }) {
   const percentage = Math.max(0, Math.min(100, (1 - distance / 10) * 100));
 
-  let barColor = "bg-green-500";
-  if (distance > 5) barColor = "bg-yellow-500";
-  if (distance > 8) barColor = "bg-orange-500";
-
   return (
-    <div className="w-16 h-2 bg-surface rounded-full overflow-hidden">
-      <div
-        className={`h-full ${barColor} transition-all duration-500 ease-out`}
-        style={{ width: `${percentage}%` }}
-      />
-    </div>
+    <Progress value={percentage} className="w-20">
+      <ProgressTrack className="h-2">
+        <ProgressIndicator
+          className={`transition-all duration-500 ${
+            distance === 0
+              ? "bg-success"
+              : distance <= 5
+                ? "bg-success"
+                : distance <= 8
+                  ? "bg-warning"
+                  : "bg-destructive"
+          }`}
+        />
+      </ProgressTrack>
+    </Progress>
   );
 }

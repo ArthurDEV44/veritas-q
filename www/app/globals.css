@@ -1,122 +1,421 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ═══════════════════════════════════════════════════════════════
+   Quantum Noir — Design Token System
+   ═══════════════════════════════════════════════════════════════
+   Deep dark surfaces with phosphorescent quantum-green accents,
+   geometric precision, trust-evoking hierarchy.
+
+   Inspired by: Vercel (pin 304), Anytype (pin 1290), Huly (pin 2967)
+   Color science: oklch() for perceptual uniformity
+   Contrast: all text/bg pairs verified WCAG 2.1 AA+
+   ═══════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Veritas Dark Theme - "Midnight Black" */
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  /* ─── Quantum Green Accent Scale ────────────────────────────
+     Perceptually uniform oklch scale, hue ≈ 152–165°
+     Centered on #00ff88 (quantum-500)
+     ────────────────────────────────────────────────────────── */
+  --quantum-50:  oklch(0.979 0.030 165.3);   /* #e6fff3 */
+  --quantum-100: oklch(0.958 0.061 164.8);   /* #ccffe7 */
+  --quantum-200: oklch(0.925 0.117 162.5);   /* #99ffcf */
+  --quantum-300: oklch(0.900 0.165 160.1);   /* #66ffb8 */
+  --quantum-400: oklch(0.884 0.202 156.5);   /* #33ffa0 */
+  --quantum-500: oklch(0.876 0.228 152.5);   /* #00ff88 — base */
+  --quantum-600: oklch(0.741 0.191 152.9);   /* #00cc6d */
+  --quantum-700: oklch(0.599 0.153 153.4);   /* #009952 */
+  --quantum-800: oklch(0.448 0.113 154.0);   /* #006636 */
+  --quantum-900: oklch(0.282 0.068 156.6);   /* #00331b */
+  --quantum-950: oklch(0.155 0.038 157.0);   /* #001a0e */
 
-  /* Quantum Green Accent */
+  /* Quantum Glow — oklch with alpha for modern glow/shadow effects */
+  --quantum-glow: oklch(0.876 0.228 152.5 / 30%);
+  --quantum-glow-intense: oklch(0.876 0.228 152.5 / 50%);
+
+  /* ─── Surface Depth Layers ──────────────────────────────────
+     Blue-tinted dark surfaces for dimensional depth.
+     Progression: background → surface-1 → surface-2 → surface-3
+     ────────────────────────────────────────────────────────── */
+  --background:   #06060a;  /* oklch(0.125 0.010 284.8) — deepest base */
+  --surface-1:    #0c0c12;  /* oklch(0.157 0.013 284.8) — subtle depth */
+  --surface-2:    #14141e;  /* oklch(0.196 0.020 284.4) — cards, panels */
+  --surface-3:    #1c1c28;  /* oklch(0.232 0.023 284.5) — hover, active */
+
+  /* ─── Foreground ────────────────────────────────────────── */
+  --foreground:        #e8e8ef;  /* oklch(0.933 0.009 286.2) — 16.59:1 on bg */
+  --muted-foreground:  #7e7e96;  /* oklch(0.602 0.036 285.3) — 5.12:1 on bg, WCAG AA */
+
+  /* ─── Borders ───────────────────────────────────────────── */
+  --border:           #1e1e2e;  /* oklch(0.243 0.030 283.9) — subtle, blue-tinted */
+  --border-emphasis:  #2a2a3a;  /* oklch(0.292 0.029 284.5) — stronger borders */
+
+  /* ─── CossUI Standard Tokens ────────────────────────────── */
+  --radius: 0.625rem;
+
+  /* Card = surface-1 (slightly above background) */
+  --card: #0c0c12;
+  --card-foreground: #e8e8ef;
+
+  /* Popover = surface-2 (elevated above cards) */
+  --popover: #14141e;
+  --popover-foreground: #e8e8ef;
+
+  /* Primary = Quantum Green — 15.09:1 contrast on background */
+  --primary: oklch(0.876 0.228 152.5);
+  --primary-foreground: #06060a;  /* APCA -87.7 on quantum green */
+
+  /* Secondary = surface-3 for subtle emphasis */
+  --secondary: #1c1c28;
+  --secondary-foreground: #e8e8ef;
+
+  /* Muted = surface-1 for subdued backgrounds */
+  --muted: #0c0c12;
+
+  /* Accent = surface-2 for hover/active states */
+  --accent: #14141e;
+  --accent-foreground: #e8e8ef;
+
+  /* Destructive */
+  --destructive: oklch(0.637 0.208 25.3);
+  --destructive-foreground: oklch(0.704 0.191 22.2);
+
+  /* Semantic status */
+  --info: oklch(0.623 0.188 259.8);
+  --info-foreground: oklch(0.707 0.165 254.6);
+  --success: oklch(0.723 0.192 149.6);
+  --success-foreground: oklch(0.792 0.177 148.9);
+  --warning: oklch(0.769 0.165 70.1);
+  --warning-foreground: oklch(0.828 0.143 72.5);
+
+  /* Input & Ring */
+  --input: #1e1e2e;
+  --ring: oklch(0.876 0.228 152.5 / 40%);
+
+  /* Chart palette (quantum-inspired) */
+  --chart-1: oklch(0.876 0.228 152.5);  /* quantum green */
+  --chart-2: oklch(0.623 0.188 259.8);  /* info blue */
+  --chart-3: oklch(0.769 0.165 70.1);   /* warning amber */
+  --chart-4: oklch(0.637 0.208 25.3);   /* destructive red */
+  --chart-5: oklch(0.700 0.150 300.0);  /* purple accent */
+
+  /* Sidebar */
+  --sidebar: #06060a;
+  --sidebar-foreground: #e8e8ef;
+  --sidebar-primary: oklch(0.876 0.228 152.5);
+  --sidebar-primary-foreground: #06060a;
+  --sidebar-accent: #14141e;
+  --sidebar-accent-foreground: #e8e8ef;
+  --sidebar-border: #1e1e2e;
+  --sidebar-ring: oklch(0.876 0.228 152.5 / 40%);
+
+  /* ─── Motion System ─────────────────────────────────────── */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+
+  /* ─── Typography ────────────────────────────────────────── */
+  --font-display: var(--font-geist-sans);
+  --letter-spacing-display: -0.04em;
+
+  /* ─── Legacy Aliases (existing component compat) ────────── */
   --quantum-green: #00ff88;
-  --quantum-green-dim: #00cc6a;
-  --quantum-green-glow: rgba(0, 255, 136, 0.3);
-
-  /* Status Colors */
+  --quantum-green-dim: #00cc6d;
+  --quantum-green-glow: oklch(0.876 0.228 152.5 / 30%);
+  --surface: #0c0c12;
+  --surface-elevated: #14141e;
   --verified-green: #22c55e;
   --failed-red: #ef4444;
   --warning-amber: #f59e0b;
-
-  /* Surface Colors */
-  --surface: #111111;
-  --surface-elevated: #1a1a1a;
-  --border: #2a2a2a;
 }
 
+/* ─── Dark Mode Override ────────────────────────────────────
+   App runs dark-only (html.dark). Identical to :root for
+   CossUI .dark selector compatibility.
+   ────────────────────────────────────────────────────────── */
+.dark {
+  --background: #06060a;
+  --foreground: #e8e8ef;
+  --card: #0c0c12;
+  --card-foreground: #e8e8ef;
+  --popover: #14141e;
+  --popover-foreground: #e8e8ef;
+  --primary: oklch(0.876 0.228 152.5);
+  --primary-foreground: #06060a;
+  --secondary: #1c1c28;
+  --secondary-foreground: #e8e8ef;
+  --muted: #0c0c12;
+  --muted-foreground: #6b6b80;
+  --accent: #14141e;
+  --accent-foreground: #e8e8ef;
+  --destructive: oklch(0.637 0.208 25.3);
+  --destructive-foreground: oklch(0.704 0.191 22.2);
+  --info: oklch(0.623 0.188 259.8);
+  --info-foreground: oklch(0.707 0.165 254.6);
+  --success: oklch(0.723 0.192 149.6);
+  --success-foreground: oklch(0.792 0.177 148.9);
+  --warning: oklch(0.769 0.165 70.1);
+  --warning-foreground: oklch(0.828 0.143 72.5);
+  --border: #1e1e2e;
+  --input: #1e1e2e;
+  --ring: oklch(0.876 0.228 152.5 / 40%);
+  --chart-1: oklch(0.876 0.228 152.5);
+  --chart-2: oklch(0.623 0.188 259.8);
+  --chart-3: oklch(0.769 0.165 70.1);
+  --chart-4: oklch(0.637 0.208 25.3);
+  --chart-5: oklch(0.700 0.150 300.0);
+  --sidebar: #06060a;
+  --sidebar-foreground: #e8e8ef;
+  --sidebar-primary: oklch(0.876 0.228 152.5);
+  --sidebar-primary-foreground: #06060a;
+  --sidebar-accent: #14141e;
+  --sidebar-accent-foreground: #e8e8ef;
+  --sidebar-border: #1e1e2e;
+  --sidebar-ring: oklch(0.876 0.228 152.5 / 40%);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Tailwind v4 Theme — utility class registration
+   ═══════════════════════════════════════════════════════════════ */
 @theme inline {
+  /* ─── Quantum Accent Scale ─── */
+  --color-quantum-50:  var(--quantum-50);
+  --color-quantum-100: var(--quantum-100);
+  --color-quantum-200: var(--quantum-200);
+  --color-quantum-300: var(--quantum-300);
+  --color-quantum-400: var(--quantum-400);
+  --color-quantum-500: var(--quantum-500);
+  --color-quantum-600: var(--quantum-600);
+  --color-quantum-700: var(--quantum-700);
+  --color-quantum-800: var(--quantum-800);
+  --color-quantum-900: var(--quantum-900);
+  --color-quantum-950: var(--quantum-950);
+  --color-quantum-glow: var(--quantum-glow);
+  --color-quantum-glow-intense: var(--quantum-glow-intense);
+
+  /* ─── Surface Depth Utilities ─── */
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-emphasis: var(--border-emphasis);
+
+  /* ─── CossUI Standard ─── */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Chart */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* ─── Legacy aliases (existing component compat) ─── */
   --color-quantum: var(--quantum-green);
   --color-quantum-dim: var(--quantum-green-dim);
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
-  --color-border: var(--border);
+
+  /* ─── Typography ─── */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+  --letter-spacing-display: var(--letter-spacing-display);
+
+  /* ─── Radius ─── */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  /* ─── Motion ─── */
+  --ease-out-expo: var(--ease-out-expo);
+  --ease-smooth: var(--ease-in-out-smooth);
+
+  /* ─── Animations ─── */
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+  --animate-shimmer: shimmer 2s infinite linear;
+  --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
+  --animate-scan-line: scan-line 3s ease-in-out infinite;
+  --animate-quantum-pulse: quantum-pulse 2s ease-in-out infinite;
+  --animate-shield-verified: shield-verified 0.5s var(--ease-out-expo);
+  --animate-fade-in: fadeIn var(--duration-normal) var(--ease-out-expo);
+  --animate-slide-up: slideUp var(--duration-normal) var(--ease-out-expo);
+  --animate-slide-down: slideDown var(--duration-normal) var(--ease-out-expo);
+  --animate-scale-in: scaleIn var(--duration-fast) var(--ease-out-expo);
+
+  @keyframes skeleton {
+    to { background-position: -200% 0; }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 8px var(--quantum-glow), 0 0 16px var(--quantum-glow); }
+    50% { box-shadow: 0 0 16px var(--quantum-glow-intense), 0 0 32px var(--quantum-glow); }
+  }
+
+  @keyframes scan-line {
+    0% { transform: translateY(-100%); opacity: 0; }
+    10% { opacity: 0.6; }
+    90% { opacity: 0.6; }
+    100% { transform: translateY(100%); opacity: 0; }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Base Layer — Global Defaults
+   ═══════════════════════════════════════════════════════════════ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
-/* Quantum Glow Effects */
+/* ═══════════════════════════════════════════════════════════════
+   Quantum Glow Utility Classes
+   ═══════════════════════════════════════════════════════════════ */
 .quantum-glow {
-  box-shadow: 0 0 20px var(--quantum-green-glow), 0 0 40px var(--quantum-green-glow);
+  box-shadow:
+    0 0 20px var(--quantum-glow),
+    0 0 40px var(--quantum-glow);
 }
 
 .quantum-glow-sm {
-  box-shadow: 0 0 10px var(--quantum-green-glow);
+  box-shadow: 0 0 10px var(--quantum-glow);
 }
 
-/* Pulse animation for loading states */
+.quantum-glow-lg {
+  box-shadow:
+    0 0 30px var(--quantum-glow-intense),
+    0 0 60px var(--quantum-glow),
+    0 0 100px var(--quantum-glow);
+}
+
+.quantum-glow-text {
+  text-shadow:
+    0 0 20px var(--quantum-glow),
+    0 0 40px var(--quantum-glow);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Staggered Card Entrance — List & Grid Views
+   ═══════════════════════════════════════════════════════════════
+   Apply `.stagger-item` on each child. Set `animation-delay`
+   inline via `style` for per-item offset. `backwards` fill
+   keeps items invisible until their delay elapses → CLS = 0.
+   ═══════════════════════════════════════════════════════════════ */
+.stagger-item {
+  animation: slideUp var(--duration-normal) var(--ease-out-expo) backwards;
+}
+
+.stagger-item-right {
+  animation: slideInRight var(--duration-normal) var(--ease-out-expo) backwards;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Animation Keyframes
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Quantum pulse — loading states */
 @keyframes quantum-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .quantum-pulse {
   animation: quantum-pulse 2s ease-in-out infinite;
 }
 
-/* Shield animations */
+/* Shield animations — verification feedback */
 @keyframes shield-verified {
-  0% {
-    transform: scale(0.8);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 @keyframes shield-failed {
-  0%, 100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-5px);
-  }
-  75% {
-    transform: translateX(5px);
-  }
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
 }
 
 .shield-verified {
-  animation: shield-verified 0.5s ease-out;
+  animation: shield-verified 0.5s var(--ease-out-expo);
 }
 
 .shield-failed {
-  animation: shield-failed 0.3s ease-in-out 3;
+  animation: shield-failed 0.3s var(--ease-in-out-smooth) 3;
 }
 
-/* Custom scrollbar for dark theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Ring expansion — verification success burst */
+@keyframes ring-expand {
+  0% {
+    box-shadow: 0 0 0 0 var(--quantum-glow-intense);
+    opacity: 1;
+  }
+  100% {
+    box-shadow: 0 0 0 20px var(--quantum-glow);
+    opacity: 0;
+  }
 }
 
-::-webkit-scrollbar-track {
-  background: var(--surface);
+.ring-expand {
+  animation: ring-expand 0.6s var(--ease-out-expo);
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
-}
-
-/* Animation keyframes for framer-motion replacement */
+/* Page entrance */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -150,4 +449,25 @@ body {
 @keyframes slideInLeft {
   from { opacity: 0; transform: translateX(-10px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Custom Scrollbar — Quantum Noir
+   ═══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-emphasis);
 }

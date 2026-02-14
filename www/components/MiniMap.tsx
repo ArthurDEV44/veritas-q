@@ -38,6 +38,8 @@ export default function MiniMap({ lat, lng, altitude, className = '' }: MiniMapP
       {/* Map tile with marker overlay */}
       <div
         ref={mapRef}
+        role="img"
+        aria-label="Carte de localisation"
         className="relative w-full h-32 bg-surface"
         style={{
           backgroundImage: `url(${tileUrl})`,

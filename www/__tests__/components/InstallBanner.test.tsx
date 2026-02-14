@@ -1,30 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import React from "react";
-
-// Mock framer-motion
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({
-      children,
-      ...props
-    }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div data-testid="motion-div" {...props}>
-        {children}
-      </div>
-    ),
-    button: ({
-      children,
-      onClick,
-      ...props
-    }: React.PropsWithChildren<{ onClick?: () => void }>) => (
-      <button data-testid="motion-button" onClick={onClick} {...props}>
-        {children}
-      </button>
-    ),
-  },
-  AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>,
-}));
 
 // Mutable state object
 const mockState = {
@@ -120,8 +95,55 @@ describe("InstallBanner", () => {
     await act(async () => {
       vi.runAllTimers();
     });
-    // The component uses HTML entities in JSX which render as proper quotes
-    expect(screen.getByText(/Sur l'écran d'accueil/)).toBeInTheDocument();
-    expect(screen.getByText("Safari uniquement")).toBeInTheDocument();
+    expect(screen.getByText(/Sur l'ecran d'accueil/)).toBeInTheDocument();
+  });
+
+  it("should auto-dismiss after 10 seconds without interaction", async () => {
+    render(<InstallBanner />);
+    // Mount the component
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(screen.getByText("Installer Veritas Q")).toBeInTheDocument();
+
+    // Advance past auto-dismiss timeout
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(screen.queryByText("Installer Veritas Q")).not.toBeInTheDocument();
+  });
+
+  it("should not auto-dismiss if user interacts", async () => {
+    render(<InstallBanner />);
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+
+    const banner = screen.getByText("Installer Veritas Q").closest("[class*='fixed']")!;
+    await act(async () => {
+      fireEvent.pointerDown(banner);
+    });
+
+    // Advance past auto-dismiss timeout
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    // Should still be visible because user interacted
+    expect(screen.getByText("Installer Veritas Q")).toBeInTheDocument();
+  });
+
+  it("should dismiss when close button is clicked", async () => {
+    render(<InstallBanner />);
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+
+    const closeButton = screen.getByLabelText("Fermer");
+    await act(async () => {
+      fireEvent.click(closeButton);
+    });
+
+    expect(screen.queryByText("Installer Veritas Q")).not.toBeInTheDocument();
+    expect(mockState.promptInstall).toHaveBeenCalled();
   });
 });

@@ -5,6 +5,29 @@ import { useUser, useClerk, useAuth } from "@clerk/nextjs";
 import { ArrowLeft, AlertTriangle, Trash2, Shield } from "lucide-react";
 import Link from "next/link";
 import { API_URL, getAuthHeaders } from "@/lib/api";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardPanel } from "@/components/ui/card";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import {
+  Field,
+  FieldLabel,
+  FieldDescription,
+  FieldError,
+} from "@/components/ui/field";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import { Separator } from "@/components/ui/separator";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+
 const CONFIRMATION_TEXT = "SUPPRIMER";
 
 export default function DeleteAccountPage() {
@@ -26,7 +49,6 @@ export default function DeleteAccountPage() {
     setError(null);
 
     try {
-      // Step 1: Delete from our database first
       const authHeaders = await getAuthHeaders(getToken);
       const response = await fetch(`${API_URL}/api/v1/users/me`, {
         method: "DELETE",
@@ -38,13 +60,12 @@ export default function DeleteAccountPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to delete account from database");
+        throw new Error(
+          data.detail || "Failed to delete account from database"
+        );
       }
 
-      // Step 2: Delete from Clerk
       await user.delete();
-
-      // Step 3: Sign out and redirect
       await signOut({ redirectUrl: "/" });
     } catch (err) {
       console.error("Delete account error:", err);
@@ -59,209 +80,224 @@ export default function DeleteAccountPage() {
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
-      {/* Back navigation */}
+      {/* Breadcrumb + back navigation */}
       <div className="flex items-center gap-4">
-        <Link
-          href="/dashboard/settings"
-          className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          render={<Link href="/dashboard/settings" />}
           aria-label="Retour aux parametres"
         >
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-red-500">
+          <ArrowLeft />
+        </Button>
+        <div className="space-y-1">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/dashboard" />}>
+                  Dashboard
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/dashboard/settings" />}>
+                  Parametres
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Supprimer le compte</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+          <h1 className="text-xl sm:text-2xl font-bold text-destructive-foreground">
             Supprimer mon compte
           </h1>
-          <p className="text-sm text-foreground/60">
-            Cette action est irreversible
-          </p>
         </div>
       </div>
 
       {step === "warning" && (
         <div className="space-y-6">
-          {/* Warning card */}
-          <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 rounded-lg bg-red-500/10">
-                <AlertTriangle className="w-6 h-6 text-red-500" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="font-semibold text-red-500">
-                  Attention : Cette action est definitive
-                </h2>
-                <p className="text-sm text-foreground/80">
-                  La suppression de votre compte entrainera :
-                </p>
-              </div>
-            </div>
-          </div>
+          {/* Warning alert */}
+          <Alert variant="error">
+            <AlertTriangle />
+            <AlertTitle>Attention : Cette action est definitive</AlertTitle>
+            <AlertDescription>
+              La suppression de votre compte entrainera la perte irreversible de
+              vos donnees.
+            </AlertDescription>
+          </Alert>
 
           {/* Consequences list */}
-          <div className="space-y-4">
-            <ConsequenceItem
+          <div className="space-y-3">
+            <ConsequenceCard
               icon={Trash2}
               title="Suppression de vos donnees personnelles"
               description="Votre profil, email et informations de compte seront supprimes de notre base de donnees."
-              destructive
+              variant="destructive"
             />
-            <ConsequenceItem
+            <ConsequenceCard
               icon={Trash2}
               title="Suppression de vos medias"
               description="Toutes les photos et videos que vous avez scellees seront supprimees de nos serveurs."
-              destructive
+              variant="destructive"
             />
-            <ConsequenceItem
+            <ConsequenceCard
               icon={Shield}
               title="Conservation des preuves cryptographiques"
               description="Les hashs cryptographiques (seals) sont conserves pour maintenir l'integrite du systeme de verification. Cela permet de verifier l'authenticite des medias deja partages."
-              preserved
+              variant="preserved"
             />
           </div>
 
           {/* GDPR note */}
-          <div className="rounded-lg border border-border bg-surface/30 p-4 text-sm text-foreground/60">
-            <p>
+          <Alert variant="info">
+            <AlertDescription>
               Cette action est conforme au RGPD (Article 17 - Droit a
               l&apos;effacement). Les seals cryptographiques sont conserves car
               ils ne contiennent pas de donnees personnelles et sont necessaires
               a l&apos;integrite du systeme de verification.
-            </p>
-          </div>
+            </AlertDescription>
+          </Alert>
 
           {/* Continue button */}
-          <button
+          <Button
+            variant="destructive-outline"
+            className="w-full"
             onClick={() => setStep("confirm")}
-            className="w-full py-3 px-4 rounded-lg border border-red-500/50 text-red-500 hover:bg-red-500/10 transition-colors font-medium"
           >
             Je comprends, continuer
-          </button>
+          </Button>
         </div>
       )}
 
       {step === "confirm" && (
         <div className="space-y-6">
           {/* Confirmation card */}
-          <div className="rounded-xl border border-border bg-surface/50 p-6 space-y-4">
-            <h2 className="font-semibold">Confirmer la suppression</h2>
-            <p className="text-sm text-foreground/60">
-              Pour confirmer la suppression de votre compte, tapez{" "}
-              <code className="px-2 py-1 rounded bg-red-500/10 text-red-500 font-mono">
-                {CONFIRMATION_TEXT}
-              </code>{" "}
-              dans le champ ci-dessous.
-            </p>
+          <Card>
+            <CardHeader>
+              <CardTitle>Confirmer la suppression</CardTitle>
+            </CardHeader>
+            <CardPanel className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Pour confirmer la suppression de votre compte, tapez{" "}
+                <Badge variant="error" size="sm" className="font-mono">
+                  {CONFIRMATION_TEXT}
+                </Badge>{" "}
+                dans le champ ci-dessous.
+              </p>
 
-            <input
-              type="text"
-              value={confirmationInput}
-              onChange={(e) => setConfirmationInput(e.target.value.toUpperCase())}
-              placeholder={`Tapez ${CONFIRMATION_TEXT} pour confirmer`}
-              className="w-full px-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-foreground/40 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none"
-              disabled={isDeleting}
-            />
+              <Field>
+                <FieldLabel>Code de confirmation</FieldLabel>
+                <Input
+                  value={confirmationInput}
+                  onChange={(e) =>
+                    setConfirmationInput(
+                      (e.target as HTMLInputElement).value.toUpperCase()
+                    )
+                  }
+                  placeholder={`Tapez ${CONFIRMATION_TEXT} pour confirmer`}
+                  disabled={isDeleting}
+                  size="lg"
+                />
+                <FieldDescription>
+                  Cette action est irreversible
+                </FieldDescription>
+                {error && <FieldError>{error}</FieldError>}
+              </Field>
 
-            {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-500">
-                {error}
+              <Separator />
+
+              <div className="flex gap-3">
+                <Button
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => {
+                    setStep("warning");
+                    setConfirmationInput("");
+                    setError(null);
+                  }}
+                  disabled={isDeleting}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={handleDelete}
+                  disabled={!isConfirmed || isDeleting}
+                >
+                  {isDeleting ? (
+                    <>
+                      <Spinner className="size-4" />
+                      Suppression...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 />
+                      Supprimer mon compte
+                    </>
+                  )}
+                </Button>
               </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setStep("warning");
-                  setConfirmationInput("");
-                  setError(null);
-                }}
-                className="flex-1 py-3 px-4 rounded-lg border border-border text-foreground/60 hover:bg-surface-hover transition-colors"
-                disabled={isDeleting}
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={!isConfirmed || isDeleting}
-                className="flex-1 py-3 px-4 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
-              >
-                {isDeleting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Suppression...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    Supprimer mon compte
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+            </CardPanel>
+          </Card>
 
           {/* Account info */}
-          <div className="rounded-lg border border-border bg-surface/30 p-4">
-            <p className="text-sm text-foreground/60">
+          <Alert>
+            <AlertDescription>
               Compte a supprimer :{" "}
               <span className="text-foreground font-medium">
                 {user?.primaryEmailAddress?.emailAddress}
               </span>
-            </p>
-          </div>
+            </AlertDescription>
+          </Alert>
         </div>
       )}
     </div>
   );
 }
 
-function ConsequenceItem({
+function ConsequenceCard({
   icon: Icon,
   title,
   description,
-  destructive = false,
-  preserved = false,
+  variant,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
-  destructive?: boolean;
-  preserved?: boolean;
+  variant: "destructive" | "preserved";
 }) {
   return (
-    <div
-      className={`rounded-lg border p-4 ${
-        destructive
-          ? "border-red-500/20 bg-red-500/5"
-          : preserved
-          ? "border-quantum/20 bg-quantum/5"
-          : "border-border bg-surface/30"
-      }`}
+    <Card
+      className={
+        variant === "destructive"
+          ? "border-destructive/20 bg-destructive/4"
+          : "border-success/20 bg-success/4"
+      }
     >
-      <div className="flex items-start gap-3">
+      <CardPanel className="flex items-start gap-3">
         <Icon
-          className={`w-5 h-5 mt-0.5 ${
-            destructive
-              ? "text-red-500"
-              : preserved
-              ? "text-quantum"
-              : "text-foreground/60"
+          className={`size-5 mt-0.5 shrink-0 ${
+            variant === "destructive"
+              ? "text-destructive-foreground"
+              : "text-success-foreground"
           }`}
         />
         <div>
           <h3
             className={`font-medium text-sm ${
-              destructive
-                ? "text-red-500"
-                : preserved
-                ? "text-quantum"
-                : "text-foreground"
+              variant === "destructive"
+                ? "text-destructive-foreground"
+                : "text-success-foreground"
             }`}
           >
             {title}
           </h3>
-          <p className="text-sm text-foreground/60 mt-1">{description}</p>
+          <p className="text-sm text-muted-foreground mt-1">{description}</p>
         </div>
-      </div>
-    </div>
+      </CardPanel>
+    </Card>
   );
 }

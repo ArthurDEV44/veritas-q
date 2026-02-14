@@ -2,22 +2,36 @@
 
 import { useState } from 'react';
 import {
-  X,
   Download,
   FileJson,
   FileCode2,
   Check,
-  Loader2,
   ExternalLink,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogClose,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { RadioGroup, Radio } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
 
 export type ExportFormat = 'json' | 'c2pa';
 
 interface ExportModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   sealId: string;
   onExport: (format: ExportFormat) => Promise<void>;
+  trigger?: React.ReactNode;
 }
 
 const formatOptions: {
@@ -44,23 +58,23 @@ const formatOptions: {
 ];
 
 export default function ExportModal({
-  isOpen,
-  onClose,
+  open,
+  onOpenChange,
   sealId,
   onExport,
+  trigger,
 }: ExportModalProps) {
-  const [selectedFormat, setSelectedFormat] = useState<ExportFormat | null>(null);
+  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('json');
   const [isExporting, setIsExporting] = useState(false);
   const [exportedFormat, setExportedFormat] = useState<ExportFormat | null>(null);
 
-  const handleExport = async (format: ExportFormat) => {
-    setSelectedFormat(format);
+  const handleExport = async () => {
     setIsExporting(true);
     setExportedFormat(null);
 
     try {
-      await onExport(format);
-      setExportedFormat(format);
+      await onExport(selectedFormat);
+      setExportedFormat(selectedFormat);
     } catch (error) {
       console.error('Export failed:', error);
     } finally {
@@ -68,138 +82,116 @@ export default function ExportModal({
     }
   };
 
-  const handleClose = () => {
+  const handleOpenChange = (nextOpen: boolean) => {
     if (!isExporting) {
-      setSelectedFormat(null);
-      setExportedFormat(null);
-      onClose();
+      onOpenChange(nextOpen);
+      if (!nextOpen) {
+        setExportedFormat(null);
+      }
     }
   };
 
   return (
-    <>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="animate-[fadeIn_0.3s_ease-out] fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-            onClick={handleClose}
-          />
-
-          {/* Modal */}
-          <div className="animate-[scaleIn_0.3s_ease-out] fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface-elevated rounded-2xl border border-border shadow-xl z-50 overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-quantum/10 rounded-lg">
-                  <Download className="w-5 h-5 text-quantum" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">
-                    Exporter le Seal
-                  </h2>
-                  <p className="text-xs text-foreground/60 font-mono">
-                    {sealId.slice(0, 8)}...
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleClose}
-                disabled={isExporting}
-                className="p-2 rounded-lg hover:bg-surface transition-colors disabled:opacity-50"
-              >
-                <X className="w-5 h-5 text-foreground/60" />
-              </button>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {trigger && <DialogTrigger render={trigger as React.ReactElement} />}
+      <DialogPopup showCloseButton={!isExporting}>
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+              <Download className="size-5 text-primary" />
             </div>
-
-            {/* Content */}
-            <div className="p-4 space-y-3">
-              <p className="text-sm text-foreground/70">
-                Choisissez le format d&apos;export pour votre seal authentifie:
-              </p>
-
-              {formatOptions.map((format) => {
-                const Icon = format.icon;
-                const isSelected = selectedFormat === format.id;
-                const isExported = exportedFormat === format.id;
-                const isLoading = isSelected && isExporting;
-
-                return (
-                  <button
-                    key={format.id}
-                    onClick={() => handleExport(format.id)}
-                    disabled={isExporting}
-                    className={`
-                      w-full p-4 rounded-xl border transition-all text-left
-                      ${isSelected
-                        ? 'border-quantum bg-quantum/5'
-                        : 'border-border hover:border-foreground/30 hover:bg-surface'
-                      }
-                      ${isExporting && !isSelected ? 'opacity-50 cursor-not-allowed' : ''}
-                    `}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`
-                          p-2 rounded-lg transition-colors
-                          ${isSelected ? 'bg-quantum/20' : 'bg-surface'}
-                        `}
-                      >
-                        <Icon
-                          className={`w-5 h-5 ${isSelected ? 'text-quantum' : 'text-foreground/60'}`}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3
-                            className={`font-medium ${isSelected ? 'text-quantum' : 'text-foreground'}`}
-                          >
-                            {format.title}
-                          </h3>
-                          <span className="text-xs text-foreground/40 font-mono">
-                            {format.extension}
-                          </span>
-                          {isLoading && (
-                            <Loader2 className="w-4 h-4 text-quantum animate-spin" />
-                          )}
-                          {isExported && (
-                            <div className="flex items-center gap-1 text-green-500">
-                              <Check className="w-4 h-4" />
-                              <span className="text-xs">Telecharge</span>
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-sm text-foreground/60 mt-0.5">
-                          {format.description}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-border bg-surface/50">
-              <div className="flex items-start gap-2 text-xs text-foreground/50">
-                <ExternalLink className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <p>
-                  Le format C2PA est compatible avec{' '}
-                  <a
-                    href="https://contentcredentials.org/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-quantum hover:underline"
-                  >
-                    Content Credentials
-                  </a>{' '}
-                  (Adobe, Microsoft, BBC).
-                </p>
-              </div>
+            <div>
+              <DialogTitle>Exporter le Seal</DialogTitle>
+              <DialogDescription className="font-mono">
+                {sealId.slice(0, 8)}...
+              </DialogDescription>
             </div>
           </div>
-        </>
-      )}
-    </>
+        </DialogHeader>
+
+        <DialogPanel>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Choisissez le format d&apos;export pour votre seal authentifie :
+          </p>
+
+          <RadioGroup
+            value={selectedFormat}
+            onValueChange={(val) => setSelectedFormat(val as ExportFormat)}
+            className="gap-3"
+          >
+            {formatOptions.map((format) => {
+              const Icon = format.icon;
+              const isSelected = selectedFormat === format.id;
+              const isExported = exportedFormat === format.id;
+
+              return (
+                <Label
+                  key={format.id}
+                  className="flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors has-data-[checked]:border-primary has-data-[checked]:bg-primary/5 hover:bg-accent/50"
+                >
+                  <Radio value={format.id} className="mt-0.5" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Icon
+                        className={`size-4 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`}
+                      />
+                      <span className="font-medium">{format.title}</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {format.extension}
+                      </span>
+                      {isExported && (
+                        <span className="flex items-center gap-1 text-success">
+                          <Check className="size-3.5" />
+                          <span className="text-xs">Telecharge</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {format.description}
+                    </p>
+                  </div>
+                </Label>
+              );
+            })}
+          </RadioGroup>
+        </DialogPanel>
+
+        <DialogFooter>
+          <div className="flex w-full items-start gap-2 text-xs text-muted-foreground sm:flex-1">
+            <ExternalLink className="mt-0.5 size-3.5 shrink-0" />
+            <p>
+              Le format C2PA est compatible avec{' '}
+              <a
+                href="https://contentcredentials.org/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Content Credentials
+              </a>{' '}
+              (Adobe, Microsoft, BBC).
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <DialogClose render={<Button variant="ghost" />}>
+              Fermer
+            </DialogClose>
+            <Button onClick={handleExport} disabled={isExporting}>
+              {isExporting ? (
+                <>
+                  <Spinner className="size-4" />
+                  Export...
+                </>
+              ) : (
+                <>
+                  <Download className="size-4" />
+                  Telecharger
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogPopup>
+    </Dialog>
   );
 }

@@ -1,21 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import React from "react";
-
-// Mock framer-motion
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({
-      children,
-      ...props
-    }: React.PropsWithChildren<Record<string, unknown>>) => (
-      <div data-testid="motion-div" {...props}>
-        {children}
-      </div>
-    ),
-  },
-  AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>,
-}));
 
 // Mutable state object
 const mockState = {
@@ -32,10 +16,24 @@ vi.mock("@/hooks/useServiceWorker", () => ({
   useServiceWorker: () => mockState,
 }));
 
-// Import after mocks
-import PWAStatus from "@/components/PWAStatus";
+// Mock useOfflineSync (used by ConnectivityIndicator, not by ConnectivityStatus)
+vi.mock("@/hooks/useOfflineSync", () => ({
+  useOfflineSync: () => ({
+    pendingCount: 0,
+    isSyncing: false,
+    isOffline: false,
+    lastSyncAt: null,
+    lastSyncError: null,
+    syncAll: vi.fn(),
+    retryCapture: vi.fn(),
+    clearAll: vi.fn(),
+  }),
+}));
 
-describe("PWAStatus", () => {
+// Import after mocks
+import ConnectivityStatus from "@/components/ConnectivityStatus";
+
+describe("ConnectivityStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
@@ -52,59 +50,55 @@ describe("PWAStatus", () => {
   });
 
   it("should not render when online and no update", async () => {
-    render(<PWAStatus />);
+    render(<ConnectivityStatus />);
     await act(async () => {
       vi.runAllTimers();
     });
-    // After mount, still shouldn't show anything
     expect(screen.queryByText(/Hors connexion/)).not.toBeInTheDocument();
   });
 
-  it("should show offline banner when offline", async () => {
+  it("should show offline alert when offline", async () => {
     mockState.isOffline = true;
-    render(<PWAStatus />);
+    render(<ConnectivityStatus />);
     await act(async () => {
       vi.runAllTimers();
     });
-    expect(
-      screen.getByText(/Hors connexion - Fonctionnalités limitées/)
-    ).toBeInTheDocument();
+    expect(screen.getByText("Hors connexion")).toBeInTheDocument();
   });
 
-  it("should show update banner when update available", async () => {
+  it("should show update alert when update available", async () => {
     mockState.updateAvailable = true;
-    render(<PWAStatus />);
+    render(<ConnectivityStatus />);
     await act(async () => {
       vi.runAllTimers();
     });
     expect(screen.getByText(/Nouvelle version disponible/)).toBeInTheDocument();
-    expect(screen.getByText("Mettre à jour")).toBeInTheDocument();
+    expect(screen.getByText("Mettre a jour")).toBeInTheDocument();
   });
 
   it("should call applyUpdate when update button clicked", async () => {
     mockState.updateAvailable = true;
-    render(<PWAStatus />);
+    render(<ConnectivityStatus />);
     await act(async () => {
       vi.runAllTimers();
     });
 
-    const updateButton = screen.getByText("Mettre à jour");
+    const updateButton = screen.getByText("Mettre a jour");
     fireEvent.click(updateButton);
 
     expect(mockState.applyUpdate).toHaveBeenCalled();
   });
 
-  it("should show both banners when offline and update available", async () => {
+  it("should show offline alert when offline and update available", async () => {
     mockState.isOffline = true;
     mockState.updateAvailable = true;
-    render(<PWAStatus />);
+    render(<ConnectivityStatus />);
     await act(async () => {
       vi.runAllTimers();
     });
 
-    expect(
-      screen.getByText(/Hors connexion - Fonctionnalités limitées/)
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Nouvelle version disponible/)).toBeInTheDocument();
+    // Offline takes priority, update is hidden when offline
+    expect(screen.getByText("Hors connexion")).toBeInTheDocument();
+    expect(screen.queryByText(/Nouvelle version disponible/)).not.toBeInTheDocument();
   });
 });

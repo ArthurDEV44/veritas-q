@@ -3,6 +3,19 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
+import { Button } from "@/components/ui/button";
+import { Card, CardPanel } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { InfoIcon } from "lucide-react";
+
 export const metadata: Metadata = {
   title: "Profil | Veritas Q",
   description: "Modifiez vos informations de profil Veritas Q",
@@ -11,99 +24,99 @@ export const metadata: Metadata = {
 export default function ProfilePage() {
   return (
     <div className="space-y-6">
-      {/* Back navigation */}
+      {/* Breadcrumb + back navigation */}
       <div className="flex items-center gap-4">
-        <Link
-          href="/dashboard/settings"
-          className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          render={<Link href="/dashboard/settings" />}
           aria-label="Retour aux parametres"
         >
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div>
+          <ArrowLeft />
+        </Button>
+        <div className="space-y-1">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/dashboard" />}>
+                  Dashboard
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/dashboard/settings" />}>
+                  Parametres
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Profil</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <h1 className="text-xl sm:text-2xl font-bold">Mon Profil</h1>
-          <p className="text-sm text-foreground/60">
-            Modifiez vos informations personnelles
-          </p>
         </div>
       </div>
 
       {/* Clerk UserProfile component */}
-      <div className="flex justify-center">
-        <UserProfile
-          appearance={{
-            elements: {
-              // Root container
-              rootBox: "w-full max-w-3xl",
-              card: "bg-surface border border-border shadow-none rounded-xl",
-              navbar: "hidden",
-              navbarMobileMenuRow: "hidden",
-
-              // Header
-              headerTitle: "text-foreground",
-              headerSubtitle: "text-foreground/60",
-
-              // Profile section
-              profileSectionTitle: "text-foreground",
-              profileSectionTitleText: "text-foreground font-medium",
-              profileSectionContent: "text-foreground",
-              profileSectionPrimaryButton: "text-quantum hover:text-quantum/80",
-
-              // Form elements
-              formFieldLabel: "text-foreground",
-              formFieldInput:
-                "bg-background border border-border text-foreground placeholder:text-foreground/40 focus:border-quantum focus:ring-quantum",
-              formFieldInputShowPasswordButton: "text-foreground/60",
-              formButtonPrimary:
-                "bg-quantum hover:bg-quantum/90 text-background",
-              formButtonReset: "text-foreground/60 hover:text-foreground",
-
-              // Avatar
-              avatarBox: "border-2 border-quantum/20",
-              avatarImageActionsUpload: "text-quantum hover:text-quantum/80",
-              avatarImageActionsRemove: "text-red-500 hover:text-red-400",
-
-              // Page content
-              pageScrollBox: "p-0",
-              page: "gap-6",
-
-              // Badges and alerts
-              badge: "bg-quantum/10 text-quantum border-quantum/20",
-              alertText: "text-foreground",
-
-              // Accordion (for connected accounts, etc.)
-              accordionTriggerButton: "text-foreground hover:bg-surface-hover",
-              accordionContent: "text-foreground/80",
-
-              // Menu items
-              menuButton: "text-foreground hover:bg-surface-hover",
-              menuItem: "text-foreground hover:bg-surface-hover",
-
-              // Breadcrumbs
-              breadcrumbs: "hidden",
-              breadcrumbsItem: "text-foreground/60",
-              breadcrumbsItemDivider: "text-foreground/40",
-
-              // Footer
-              footer: "hidden",
-            },
-            layout: {
-              shimmer: false,
-            },
-          }}
-          routing="hash"
-        />
-      </div>
+      <Card className="max-w-3xl mx-auto">
+        <CardPanel className="p-0">
+          <UserProfile
+            appearance={{
+              elements: {
+                rootBox: "w-full",
+                card: "bg-transparent border-0 shadow-none rounded-xl",
+                navbar: "hidden",
+                navbarMobileMenuRow: "hidden",
+                headerTitle: "text-foreground",
+                headerSubtitle: "text-muted-foreground",
+                profileSectionTitle: "text-foreground",
+                profileSectionTitleText: "text-foreground font-medium",
+                profileSectionContent: "text-foreground",
+                profileSectionPrimaryButton:
+                  "text-primary hover:text-primary/80",
+                formFieldLabel: "text-foreground",
+                formFieldInput:
+                  "bg-background border border-input text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-ring",
+                formFieldInputShowPasswordButton: "text-muted-foreground",
+                formButtonPrimary:
+                  "bg-primary hover:bg-primary/90 text-primary-foreground",
+                formButtonReset: "text-muted-foreground hover:text-foreground",
+                avatarBox: "border-2 border-primary/20",
+                avatarImageActionsUpload: "text-primary hover:text-primary/80",
+                avatarImageActionsRemove:
+                  "text-destructive-foreground hover:text-destructive-foreground/80",
+                pageScrollBox: "p-0",
+                page: "gap-6",
+                badge: "bg-primary/10 text-primary border-primary/20",
+                alertText: "text-foreground",
+                accordionTriggerButton:
+                  "text-foreground hover:bg-accent/50",
+                accordionContent: "text-muted-foreground",
+                menuButton: "text-foreground hover:bg-accent/50",
+                menuItem: "text-foreground hover:bg-accent/50",
+                breadcrumbs: "hidden",
+                footer: "hidden",
+              },
+              layout: {
+                shimmer: false,
+              },
+            }}
+            routing="hash"
+          />
+        </CardPanel>
+      </Card>
 
       {/* Info note */}
       <div className="max-w-3xl mx-auto">
-        <div className="rounded-lg border border-border bg-surface/30 p-4 text-sm text-foreground/60">
-          <p>
+        <Alert variant="info">
+          <InfoIcon />
+          <AlertDescription>
             Les modifications de votre profil sont automatiquement synchronisees
             avec votre compte Veritas Q. Les changements d&apos;email necessitent
             une verification.
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       </div>
     </div>
   );

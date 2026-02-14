@@ -1,77 +1,56 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
-import { Loader2, FileX2, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 import {
-  useSealsInfiniteQuery,
-  getAllSeals,
-  getTotalSealsCount,
-  type SealFilters,
-} from '@/hooks/useSealsQuery';
+  Shield,
+  Filter,
+  Camera,
+  RefreshCw,
+  AlertCircle,
+} from 'lucide-react';
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from '@/components/ui/empty';
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+  AlertAction,
+} from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import SealCard, { SealCardSkeleton } from './SealCard';
+import type { SealRecord } from '@/hooks/useSealsQuery';
 
 interface SealListProps {
-  /** Filter options */
-  filters?: SealFilters;
-  /** Display mode */
-  view?: 'grid' | 'list';
-  /** Number of items per page */
-  pageSize?: number;
+  seals: SealRecord[];
+  isLoading: boolean;
+  isError: boolean;
+  error?: Error | null;
+  view: 'grid' | 'list';
+  hasActiveFilters: boolean;
+  onRetry: () => void;
+  onClearFilters: () => void;
+  isFetching?: boolean;
 }
 
 export default function SealList({
-  filters = {},
-  view = 'grid',
-  pageSize = 20,
+  seals,
+  isLoading,
+  isError,
+  error,
+  view,
+  hasActiveFilters,
+  onRetry,
+  onClearFilters,
+  isFetching,
 }: SealListProps) {
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useSealsInfiniteQuery(filters, pageSize);
-
-  const seals = getAllSeals(data);
-  const totalCount = getTotalSealsCount(data);
-
-  // Setup intersection observer for infinite scroll
-  const handleObserver = useCallback(
-    (entries: IntersectionObserverEntry[]) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-        fetchNextPage();
-      }
-    },
-    [fetchNextPage, hasNextPage, isFetchingNextPage]
-  );
-
-  useEffect(() => {
-    const element = loadMoreRef.current;
-    if (!element) return;
-
-    observerRef.current = new IntersectionObserver(handleObserver, {
-      root: null,
-      rootMargin: '100px',
-      threshold: 0,
-    });
-
-    observerRef.current.observe(element);
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [handleObserver]);
-
-  // Loading state
+  // Loading state: CossUI Skeleton grid/list
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -92,93 +71,114 @@ export default function SealList({
     );
   }
 
-  // Error state
+  // Error state: CossUI Alert variant="error"
   if (isError) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 px-4">
-        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
-          <FileX2 className="w-8 h-8 text-red-500" />
-        </div>
-        <h3 className="text-lg font-semibold text-red-500 mb-2">
-          Erreur de chargement
-        </h3>
-        <p className="text-foreground/60 text-sm text-center mb-4 max-w-md">
+      <Alert variant="error">
+        <AlertCircle />
+        <AlertTitle>Erreur de chargement</AlertTitle>
+        <AlertDescription>
           {error instanceof Error
             ? error.message
             : 'Impossible de charger les seals. Veuillez reessayer.'}
-        </p>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-4 py-2 bg-surface-elevated hover:bg-surface rounded-lg border border-border transition-colors transition-transform active:scale-95"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span>Reessayer</span>
-        </button>
-      </div>
+        </AlertDescription>
+        <AlertAction>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCw />
+            Reessayer
+          </Button>
+        </AlertAction>
+      </Alert>
     );
   }
 
-  // Empty state
-  if (seals.length === 0) {
+  // Empty state (no seals at all): CossUI Empty with shield icon
+  if (seals.length === 0 && !hasActiveFilters) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 px-4">
-        <div className="w-16 h-16 rounded-full bg-surface-elevated flex items-center justify-center mb-4">
-          <FileX2 className="w-8 h-8 text-foreground/40" />
-        </div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">
-          Aucun seal trouve
-        </h3>
-        <p className="text-foreground/60 text-sm text-center max-w-md">
-          {Object.keys(filters).length > 0
-            ? 'Aucun seal ne correspond aux filtres selectionnes. Essayez de modifier vos criteres.'
-            : "Vous n'avez pas encore cree de seal. Capturez votre premier media pour commencer !"}
-        </p>
-      </div>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Shield />
+          </EmptyMedia>
+          <EmptyTitle>Aucun seal trouve</EmptyTitle>
+          <EmptyDescription>
+            Vous n&apos;avez pas encore cree de seal. Capturez votre premier
+            media pour commencer !
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button render={<Link href="/" />}>
+            <Camera />
+            Capturer un media
+          </Button>
+        </EmptyContent>
+      </Empty>
     );
   }
 
-  return (
-    <div className="space-y-4">
-      {/* Results count */}
-      <div className="flex items-center justify-between px-1">
-        <p className="text-sm text-foreground/60">
-          {totalCount} seal{totalCount > 1 ? 's' : ''} trouve{totalCount > 1 ? 's' : ''}
-        </p>
-      </div>
+  // Empty filtered state: CossUI Empty with filter icon
+  if (seals.length === 0 && hasActiveFilters) {
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <Filter />
+          </EmptyMedia>
+          <EmptyTitle>Aucun resultat</EmptyTitle>
+          <EmptyDescription>
+            Aucun seal ne correspond aux filtres selectionnes. Essayez de
+            modifier vos criteres.
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant="outline" onClick={onClearFilters}>
+            Modifier les filtres
+          </Button>
+        </EmptyContent>
+      </Empty>
+    );
+  }
 
-      {/* Seals grid/list */}
+  // Data state
+  return (
+    <div
+      className={
+        isFetching ? 'opacity-60 transition-opacity duration-200' : ''
+      }
+    >
+      {/* Grid view: responsive grid */}
       {view === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {seals.map((seal) => (
-            <div key={seal.id} className="animate-[fadeIn_0.3s_ease-out]">
+          {seals.map((seal, index) => (
+            <div
+              key={seal.id}
+              className="stagger-item"
+              style={{
+                animationDelay: `${Math.min(index, 11) * 50}ms`,
+              }}
+            >
               <SealCard seal={seal} />
             </div>
           ))}
         </div>
       ) : (
-        <div className="space-y-2">
-          {seals.map((seal) => (
-            <div key={seal.id} className="animate-[slideInRight_0.3s_ease-out]">
-              <SealCard seal={seal} compact />
+        /* List view: stacked compact cards with CossUI Separator */
+        <div>
+          {seals.map((seal, index) => (
+            <div key={seal.id}>
+              {index > 0 && <Separator />}
+              <div
+                className="stagger-item-right"
+                style={{
+                  animationDelay: `${Math.min(index, 11) * 50}ms`,
+                }}
+              >
+                <SealCard seal={seal} compact />
+              </div>
             </div>
           ))}
         </div>
       )}
-
-      {/* Load more trigger (for infinite scroll) */}
-      <div ref={loadMoreRef} className="py-4 flex justify-center">
-        {isFetchingNextPage && (
-          <div className="flex items-center gap-2 text-foreground/60">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Chargement...</span>
-          </div>
-        )}
-        {!hasNextPage && seals.length > 0 && (
-          <p className="text-sm text-foreground/40">
-            Tous les seals ont ete charges
-          </p>
-        )}
-      </div>
     </div>
   );
 }

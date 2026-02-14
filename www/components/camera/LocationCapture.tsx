@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { MapPin, MapPinOff } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export interface CapturedLocation {
   lat: number;
@@ -23,10 +24,8 @@ export default function LocationCapture({
   const [currentLocation, setCurrentLocation] = useState<GeolocationPosition | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Request geolocation when GPS is enabled
   useEffect(() => {
     if (!includeLocation) {
-      // Use callback pattern to update state based on external system changes
       onLocationChange?.(null);
       return;
     }
@@ -60,22 +59,24 @@ export default function LocationCapture({
     };
   }, [includeLocation, onLocationChange]);
 
+  const variant = includeLocation
+    ? currentLocation
+      ? "success"
+      : locationError
+        ? "warning"
+        : "info"
+    : "outline";
+
   return (
-    <button
-      onClick={onToggle}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-colors ${
-        includeLocation
-          ? currentLocation
-            ? "bg-green-500/20 text-green-400"
-            : locationError
-              ? "bg-yellow-500/20 text-yellow-400"
-              : "bg-quantum/20 text-quantum"
-          : "bg-surface text-foreground/40"
-      }`}
+    <Badge
+      render={<button type="button" onClick={onToggle} />}
+      variant={variant}
+      size="lg"
+      className="cursor-pointer gap-1.5"
     >
       {includeLocation ? (
         <>
-          <MapPin className="w-4 h-4" />
+          <MapPin className="w-3.5 h-3.5" />
           <span>
             {currentLocation
               ? "GPS actif"
@@ -83,14 +84,17 @@ export default function LocationCapture({
                 ? "GPS erreur"
                 : "GPS..."}
           </span>
+          {currentLocation && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+          )}
         </>
       ) : (
         <>
-          <MapPinOff className="w-4 h-4" />
+          <MapPinOff className="w-3.5 h-3.5" />
           <span>GPS off</span>
         </>
       )}
-    </button>
+    </Badge>
   );
 }
 

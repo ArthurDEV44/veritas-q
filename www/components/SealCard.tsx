@@ -11,8 +11,13 @@ import {
   ShieldCheck,
   Clock,
 } from 'lucide-react';
+import { Card, CardPanel, CardFooter } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { SealRecord } from '@/hooks/useSealsQuery';
-import SealBadge, { TrustTier } from './SealBadge';
+import SealBadge, { type TrustTier } from './SealBadge';
+import { formatDate, formatTime, formatFileSize } from '@/lib/formatters';
 
 interface SealCardProps {
   seal: SealRecord;
@@ -31,30 +36,6 @@ const mediaTypeLabels = {
   video: 'Video',
   audio: 'Audio',
 };
-
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
-function formatTime(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function formatFileSize(bytes: number | undefined): string {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} o`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
-}
 
 function trustTierFromNumber(tier: number): TrustTier {
   switch (tier) {
@@ -77,152 +58,182 @@ export default function SealCard({ seal, compact = false }: SealCardProps) {
 
   if (compact) {
     return (
-      <Link href={`/dashboard/seals/${seal.id}`}>
-        <div className="flex items-center gap-3 p-3 bg-surface-elevated rounded-xl border border-border hover:border-quantum/30 transition-colors cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform">
-          {/* Media type icon */}
-          <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center flex-shrink-0">
-            <MediaIcon className="w-5 h-5 text-foreground/60" />
-          </div>
+      <Card
+        render={<Link href={`/dashboard/seals/${seal.id}`} aria-label={`${mediaLabel} — ${formatDate(seal.captured_at)}`} />}
+        className="flex-row items-center gap-3 p-3 transition-all duration-200 hover:border-primary/30 active:scale-[0.98] cursor-pointer"
+      >
+        {/* Media type icon */}
+        <Avatar className="size-10 rounded-lg shrink-0">
+          <AvatarFallback className="rounded-lg bg-surface-1">
+            <MediaIcon className="size-5 text-muted-foreground" />
+          </AvatarFallback>
+        </Avatar>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-foreground">
-                {mediaLabel}
-              </span>
-              <SealBadge
-                status="valid"
-                trustTier={trustTier}
-                size="small"
-              />
-            </div>
-            <p className="text-xs text-foreground/60 mt-0.5">
-              {formatDate(seal.captured_at)} • {formatTime(seal.captured_at)}
-            </p>
-          </div>
-
-          {/* Location indicator */}
-          {hasLocation && (
-            <MapPin className="w-4 h-4 text-quantum/60 flex-shrink-0" />
-          )}
-        </div>
-      </Link>
-    );
-  }
-
-  return (
-    <Link href={`/dashboard/seals/${seal.id}`}>
-      <div className="bg-surface-elevated rounded-xl border border-border hover:border-quantum/30 overflow-hidden transition-colors cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] transition-transform">
-        {/* Thumbnail area */}
-        <div className="relative aspect-video bg-surface flex items-center justify-center">
-          <div className="w-16 h-16 rounded-full bg-surface-elevated flex items-center justify-center">
-            <MediaIcon className="w-8 h-8 text-foreground/40" />
-          </div>
-
-          {/* Media type badge */}
-          <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg text-xs text-white font-medium">
-            {mediaLabel}
-          </div>
-
-          {/* Seal badge overlay */}
-          <div className="absolute bottom-2 right-2">
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{mediaLabel}</span>
             <SealBadge
               status="valid"
               trustTier={trustTier}
               size="small"
+              animate={false}
+              clickable={false}
             />
           </div>
-
-          {/* Location indicator */}
-          {hasLocation && (
-            <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-quantum/20 flex items-center justify-center">
-              <MapPin className="w-4 h-4 text-quantum" />
-            </div>
-          )}
-
-          {/* C2PA indicator */}
-          {seal.c2pa_manifest_embedded && (
-            <div className="absolute bottom-2 left-2 px-2 py-1 bg-quantum/20 backdrop-blur-sm rounded-lg text-xs text-quantum font-medium">
-              C2PA
-            </div>
-          )}
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {formatDate(seal.captured_at)} &bull; {formatTime(seal.captured_at)}
+          </p>
         </div>
 
-        {/* Info section */}
-        <div className="p-4 space-y-3">
-          {/* Date and time */}
-          <div className="flex items-center gap-2 text-sm text-foreground/60">
-            <Calendar className="w-4 h-4" />
-            <span>{formatDate(seal.captured_at)}</span>
-            <Clock className="w-4 h-4 ml-2" />
-            <span>{formatTime(seal.captured_at)}</span>
-          </div>
-
-          {/* Location if present */}
-          {hasLocation && seal.metadata.location && (
-            <div className="flex items-center gap-2 text-sm text-foreground/60">
-              <MapPin className="w-4 h-4 text-quantum" />
-              <span>
-                {seal.metadata.location.lat.toFixed(4)},{' '}
-                {seal.metadata.location.lng.toFixed(4)}
-              </span>
-            </div>
-          )}
-
-          {/* Metadata row */}
-          <div className="flex items-center justify-between text-xs text-foreground/40">
-            <span>
-              {seal.file_size ? formatFileSize(seal.file_size) : 'Taille inconnue'}
-            </span>
-            <div className="flex items-center gap-1">
-              {seal.metadata.has_device_attestation ? (
-                <>
-                  <ShieldCheck className="w-3 h-3 text-quantum" />
-                  <span className="text-quantum">Atteste</span>
-                </>
-              ) : (
-                <>
-                  <Shield className="w-3 h-3" />
-                  <span>Non atteste</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Content hash preview */}
-          <div className="pt-2 border-t border-border">
-            <p className="text-xs font-mono text-foreground/30 truncate">
-              {seal.content_hash.slice(0, 32)}...
-            </p>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-/** Skeleton loader for SealCard */
-export function SealCardSkeleton({ compact = false }: { compact?: boolean }) {
-  if (compact) {
-    return (
-      <div className="flex items-center gap-3 p-3 bg-surface-elevated rounded-xl border border-border animate-pulse">
-        <div className="w-10 h-10 rounded-lg bg-surface" />
-        <div className="flex-1 space-y-2">
-          <div className="h-4 w-24 bg-surface rounded" />
-          <div className="h-3 w-32 bg-surface rounded" />
-        </div>
-      </div>
+        {/* Indicators */}
+        {seal.c2pa_manifest_embedded && (
+          <Badge variant="info" size="sm">
+            C2PA
+          </Badge>
+        )}
+        {hasLocation && (
+          <Badge
+            variant="outline"
+            size="sm"
+            className="text-primary shrink-0"
+          >
+            <MapPin />
+          </Badge>
+        )}
+      </Card>
     );
   }
 
   return (
-    <div className="bg-surface-elevated rounded-xl border border-border overflow-hidden animate-pulse">
-      <div className="aspect-video bg-surface" />
-      <div className="p-4 space-y-3">
-        <div className="h-4 w-40 bg-surface rounded" />
-        <div className="h-4 w-32 bg-surface rounded" />
-        <div className="h-3 w-24 bg-surface rounded" />
+    <Card
+      render={<Link href={`/dashboard/seals/${seal.id}`} aria-label={`Seal ${mediaLabel} — ${formatDate(seal.captured_at)}`} />}
+      className="overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg active:scale-[0.98] cursor-pointer"
+    >
+      {/* Thumbnail area */}
+      <div className="relative aspect-video bg-surface-1 flex items-center justify-center">
+        <Avatar className="size-16">
+          <AvatarFallback>
+            <MediaIcon className="size-8 text-muted-foreground" />
+          </AvatarFallback>
+        </Avatar>
+
+        {/* Media type badge */}
+        <Badge
+          variant="outline"
+          size="sm"
+          className="absolute top-2 left-2 backdrop-blur-sm bg-black/60 border-white/10 text-white"
+        >
+          {mediaLabel}
+        </Badge>
+
+        {/* Seal trust tier badge */}
+        <SealBadge
+          status="valid"
+          trustTier={trustTier}
+          size="small"
+          position="bottom-right"
+          animate={false}
+          clickable={false}
+        />
+
+        {/* Location indicator */}
+        {hasLocation && (
+          <Badge
+            variant="outline"
+            size="sm"
+            className="absolute top-2 right-2 bg-primary/20 border-primary/30 text-primary backdrop-blur-sm"
+          >
+            <MapPin />
+          </Badge>
+        )}
+
+        {/* C2PA indicator */}
+        {seal.c2pa_manifest_embedded && (
+          <Badge
+            variant="info"
+            size="sm"
+            className="absolute bottom-2 left-2 backdrop-blur-sm"
+          >
+            C2PA
+          </Badge>
+        )}
       </div>
-    </div>
+
+      {/* Info section */}
+      <CardPanel className="space-y-3 p-4">
+        {/* Date and time */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Calendar className="size-4" />
+          <span>{formatDate(seal.captured_at)}</span>
+          <Clock className="size-4 ml-2" />
+          <span>{formatTime(seal.captured_at)}</span>
+        </div>
+
+        {/* Location if present */}
+        {hasLocation && seal.metadata.location && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <MapPin className="size-4 text-primary" />
+            <span>
+              {seal.metadata.location.lat.toFixed(4)},{' '}
+              {seal.metadata.location.lng.toFixed(4)}
+            </span>
+          </div>
+        )}
+
+        {/* Metadata row */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            {seal.file_size ? formatFileSize(seal.file_size) : 'Taille inconnue'}
+          </span>
+          <div className="flex items-center gap-1">
+            {seal.metadata.has_device_attestation ? (
+              <>
+                <ShieldCheck className="size-3 text-primary" />
+                <span className="text-primary">Atteste</span>
+              </>
+            ) : (
+              <>
+                <Shield className="size-3" />
+                <span>Non atteste</span>
+              </>
+            )}
+          </div>
+        </div>
+      </CardPanel>
+
+      {/* Content hash preview */}
+      <CardFooter className="border-t border-border px-4 py-3">
+        <p className="text-xs font-mono text-muted-foreground/60 truncate">
+          {seal.content_hash.slice(0, 32)}...
+        </p>
+      </CardFooter>
+    </Card>
+  );
+}
+
+/** Skeleton loader for SealCard using CossUI Skeleton */
+export function SealCardSkeleton({ compact = false }: { compact?: boolean }) {
+  if (compact) {
+    return (
+      <Card className="flex-row items-center gap-3 p-3">
+        <Skeleton className="size-10 rounded-lg shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <Skeleton className="aspect-video w-full rounded-none" />
+      <CardPanel className="space-y-3 p-4">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-24" />
+      </CardPanel>
+    </Card>
   );
 }

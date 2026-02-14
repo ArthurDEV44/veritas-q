@@ -1,18 +1,97 @@
 import { currentUser } from "@clerk/nextjs/server";
-import { Camera, History, Settings, Shield } from "lucide-react";
+import {
+  Camera,
+  History,
+  Settings,
+  Shield,
+  ShieldCheck,
+  ArrowRight,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
+
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardPanel,
+  CardAction,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Progress,
+  ProgressTrack,
+  ProgressIndicator,
+} from "@/components/ui/progress";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
+import { Button } from "@/components/ui/button";
+
+const quickActions = [
+  {
+    href: "/",
+    icon: Camera,
+    title: "Capturer",
+    description: "Sceller une nouvelle photo ou vidéo",
+    iconBg: "bg-quantum-500/10 text-quantum-500",
+  },
+  {
+    href: "/dashboard/seals",
+    icon: History,
+    title: "Mes Seals",
+    description: "Consulter l'historique des seals",
+    iconBg: "bg-success/10 text-success-foreground",
+  },
+  {
+    href: "/verify",
+    icon: ShieldCheck,
+    title: "Vérifier",
+    description: "Vérifier l'authenticité d'un média",
+    iconBg: "bg-info/10 text-info-foreground",
+  },
+  {
+    href: "/dashboard/settings",
+    icon: Settings,
+    title: "Paramètres",
+    description: "Gérer votre compte et préférences",
+    iconBg: "bg-muted text-muted-foreground",
+  },
+];
 
 export default async function DashboardPage() {
   const user = await currentUser();
 
   return (
     <div className="space-y-8">
+      {/* Breadcrumb */}
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbPage>Dashboard</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       {/* Welcome section */}
-      <div className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-bold">
+      <div className="space-y-1">
+        <h1 className="text-2xl sm:text-3xl font-bold font-display tracking-[var(--letter-spacing-display)]">
           Bienvenue, {user?.firstName || "Utilisateur"}
         </h1>
-        <p className="text-foreground/60">
+        <p className="text-muted-foreground">
           Gérez vos médias authentifiés et créez de nouvelles preuves
           cryptographiques.
         </p>
@@ -20,114 +99,135 @@ export default async function DashboardPage() {
 
       {/* Quick actions grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <QuickActionCard
-          href="/dashboard/capture"
-          icon={Camera}
-          title="Capturer"
-          description="Sceller une nouvelle photo ou vidéo"
-          color="quantum"
-        />
-        <QuickActionCard
-          href="/dashboard/seals"
-          icon={History}
-          title="Mes Seals"
-          description="Consulter l'historique des seals"
-          color="green"
-        />
-        <QuickActionCard
-          href="/verify"
-          icon={Shield}
-          title="Vérifier"
-          description="Vérifier l'authenticité d'un média"
-          color="blue"
-        />
-        <QuickActionCard
-          href="/dashboard/settings"
-          icon={Settings}
-          title="Paramètres"
-          description="Gérer votre compte et préférences"
-          color="gray"
-        />
-      </div>
-
-      {/* Stats placeholder */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard title="Seals créés" value="0" subtitle="ce mois" />
-        <StatCard title="Vérifications" value="0" subtitle="total" />
-        <StatCard title="Niveau" value="Tier 1" subtitle="Capture in-app" />
-      </div>
-
-      {/* Recent activity placeholder */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Activité récente</h2>
-        <div className="rounded-xl border border-border bg-surface/50 p-8 text-center">
-          <Shield className="w-12 h-12 mx-auto text-foreground/20 mb-4" />
-          <p className="text-foreground/60">
-            Aucune activité récente. Commencez par capturer votre premier média
-            authentifié.
-          </p>
-          <Link
-            href="/dashboard/capture"
-            className="inline-block mt-4 px-6 py-2 rounded-lg bg-quantum text-background hover:bg-quantum/90 transition-colors"
+        {quickActions.map((action, index) => (
+          <Card
+            key={action.href}
+            render={<Link href={action.href} />}
+            className="group stagger-item hover:border-primary/20 cursor-pointer"
+            style={{ animationDelay: `${index * 75}ms` }}
           >
-            Capturer un média
-          </Link>
+            <CardPanel>
+              <div className="flex flex-col gap-3">
+                <div
+                  className={`size-10 rounded-xl flex items-center justify-center ${action.iconBg} group-hover:scale-105 transition-transform`}
+                >
+                  <action.icon className="size-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-card-foreground">
+                    {action.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {action.description}
+                  </p>
+                </div>
+                <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors inline-flex items-center gap-1">
+                  Accéder
+                  <ArrowRight className="size-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </div>
+            </CardPanel>
+          </Card>
+        ))}
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardDescription>Seals créés</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">0</CardTitle>
+            <CardAction>
+              <Badge variant="outline" size="sm">
+                <TrendingUp className="size-3" />
+                ce mois
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardPanel>
+            <Progress value={0}>
+              <ProgressTrack>
+                <ProgressIndicator />
+              </ProgressTrack>
+            </Progress>
+          </CardPanel>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardDescription>Vérifications</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">0</CardTitle>
+            <CardAction>
+              <Badge variant="outline" size="sm">total</Badge>
+            </CardAction>
+          </CardHeader>
+          <CardPanel>
+            <Progress value={0}>
+              <ProgressTrack>
+                <ProgressIndicator />
+              </ProgressTrack>
+            </Progress>
+          </CardPanel>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardDescription>Niveau de confiance</CardDescription>
+            <CardTitle className="text-3xl">Tier 1</CardTitle>
+            <CardAction>
+              <Badge variant="success" size="sm">
+                <Shield className="size-3" />
+                Capture
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardPanel>
+            <Progress value={33}>
+              <ProgressTrack>
+                <ProgressIndicator className="bg-quantum-500" />
+              </ProgressTrack>
+            </Progress>
+          </CardPanel>
+        </Card>
+      </div>
+
+      {/* Recent activity */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Activité récente</h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            render={<Link href="/dashboard/seals" />}
+            className="text-muted-foreground"
+          >
+            Voir tout
+            <ArrowRight className="size-4" />
+          </Button>
         </div>
+
+        {/* Empty state — will be replaced when user has seals */}
+        <Card>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Zap className="size-5 text-muted-foreground" />
+              </EmptyMedia>
+              <EmptyTitle>Aucune activité récente</EmptyTitle>
+              <EmptyDescription>
+                Commencez par capturer votre premier média authentifié pour le
+                retrouver ici.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="sm" render={<Link href="/" />}>
+                <Camera className="size-4" />
+                Capturer un média
+              </Button>
+            </EmptyContent>
+          </Empty>
+        </Card>
       </div>
-    </div>
-  );
-}
-
-function QuickActionCard({
-  href,
-  icon: Icon,
-  title,
-  description,
-  color,
-}: {
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  color: "quantum" | "green" | "blue" | "gray";
-}) {
-  const colorClasses = {
-    quantum: "bg-quantum/10 text-quantum group-hover:bg-quantum/20",
-    green: "bg-green-500/10 text-green-500 group-hover:bg-green-500/20",
-    blue: "bg-blue-500/10 text-blue-500 group-hover:bg-blue-500/20",
-    gray: "bg-foreground/10 text-foreground/60 group-hover:bg-foreground/20",
-  };
-
-  return (
-    <Link
-      href={href}
-      className="group rounded-xl border border-border bg-surface/50 p-6 hover:bg-surface transition-colors"
-    >
-      <div
-        className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-colors ${colorClasses[color]}`}
-      >
-        <Icon className="w-6 h-6" />
-      </div>
-      <h3 className="font-semibold mb-1">{title}</h3>
-      <p className="text-sm text-foreground/60">{description}</p>
-    </Link>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-surface/50 p-6">
-      <p className="text-sm text-foreground/60 mb-1">{title}</p>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs text-foreground/40">{subtitle}</p>
     </div>
   );
 }

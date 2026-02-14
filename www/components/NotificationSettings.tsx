@@ -1,7 +1,19 @@
 "use client";
 
-import { Bell, BellOff, Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+
+import { Card, CardPanel } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Spinner } from "@/components/ui/spinner";
 
 export function NotificationSettings() {
   const {
@@ -17,38 +29,49 @@ export function NotificationSettings() {
   // Not supported
   if (!isSupported) {
     return (
-      <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-zinc-700 rounded-lg">
-            <BellOff className="w-5 h-5 text-zinc-400" />
+      <Card>
+        <CardPanel className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <BellOff className="size-5 text-muted-foreground" />
           </div>
           <div>
-            <h3 className="font-medium text-zinc-300">Notifications</h3>
-            <p className="text-sm text-zinc-500">
+            <h3 className="font-medium text-foreground">Notifications</h3>
+            <p className="text-sm text-muted-foreground">
               Non disponible sur ce navigateur
             </p>
           </div>
-        </div>
-      </div>
+          <Badge variant="secondary" size="sm" className="ml-auto">
+            Non supporte
+          </Badge>
+        </CardPanel>
+      </Card>
     );
   }
 
   // Permission denied
   if (permission === "denied") {
     return (
-      <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-red-500/20 rounded-lg">
-            <AlertCircle className="w-5 h-5 text-red-400" />
+      <Card>
+        <CardPanel className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
+              <AlertCircle className="size-5 text-destructive-foreground" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium text-foreground">
+                Notifications bloquees
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Autorisez les notifications dans les parametres de votre
+                navigateur
+              </p>
+            </div>
+            <Badge variant="error" size="sm">
+              Bloque
+            </Badge>
           </div>
-          <div className="flex-1">
-            <h3 className="font-medium text-zinc-300">Notifications bloquées</h3>
-            <p className="text-sm text-zinc-500">
-              Autorisez les notifications dans les paramètres de votre navigateur
-            </p>
-          </div>
-        </div>
-      </div>
+        </CardPanel>
+      </Card>
     );
   }
 
@@ -61,66 +84,63 @@ export function NotificationSettings() {
   };
 
   return (
-    <div className="bg-zinc-800/50 rounded-xl p-4 border border-zinc-700">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+    <Card>
+      <CardPanel className="space-y-3">
+        <Label
+          className="flex items-center gap-3 cursor-pointer"
+          onClick={(e) => {
+            // Prevent double-toggle from label click propagating to switch
+            if ((e.target as HTMLElement).closest('[data-slot="switch"]'))
+              return;
+            if (!isLoading) handleToggle();
+          }}
+        >
           <div
-            className={`p-2 rounded-lg ${
-              isSubscribed
-                ? "bg-green-500/20"
-                : "bg-zinc-700"
+            className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${
+              isSubscribed ? "bg-success/10" : "bg-muted"
             }`}
           >
             {isSubscribed ? (
-              <Bell className="w-5 h-5 text-green-400" />
+              <Bell className="size-5 text-success-foreground" />
             ) : (
-              <BellOff className="w-5 h-5 text-zinc-400" />
+              <BellOff className="size-5 text-muted-foreground" />
             )}
           </div>
-          <div>
-            <h3 className="font-medium text-zinc-300">Notifications push</h3>
-            <p className="text-sm text-zinc-500">
+          <div className="flex-1">
+            <p className="font-medium text-foreground">Notifications push</p>
+            <p className="text-sm text-muted-foreground font-normal">
               {isSubscribed
                 ? "Vous recevrez des alertes"
-                : "Activez pour être notifié"}
+                : "Activez pour etre notifie"}
             </p>
           </div>
-        </div>
-
-        <button
-          onClick={handleToggle}
-          disabled={isLoading}
-          className={`relative px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-            isSubscribed
-              ? "bg-zinc-700 hover:bg-zinc-600 text-zinc-300"
-              : "bg-green-600 hover:bg-green-500 text-white"
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
-        >
           {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : isSubscribed ? (
-            "Désactiver"
+            <Spinner className="size-4" />
           ) : (
-            "Activer"
+            <Switch
+              checked={isSubscribed}
+              onCheckedChange={handleToggle}
+              disabled={isLoading}
+            />
           )}
-        </button>
-      </div>
+        </Label>
 
-      {/* Error message */}
-      {error && (
-        <div className="mt-3 flex items-center gap-2 text-sm text-red-400">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
+        {/* Error message */}
+        {error && (
+          <Alert variant="error">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-      {/* Success message */}
-      {isSubscribed && !error && !isLoading && (
-        <div className="mt-3 flex items-center gap-2 text-sm text-green-400">
-          <CheckCircle className="w-4 h-4 shrink-0" />
-          <span>Notifications activées</span>
-        </div>
-      )}
-    </div>
+        {/* Success message */}
+        {isSubscribed && !error && !isLoading && (
+          <Alert variant="success">
+            <CheckCircle />
+            <AlertDescription>Notifications activees</AlertDescription>
+          </Alert>
+        )}
+      </CardPanel>
+    </Card>
   );
 }

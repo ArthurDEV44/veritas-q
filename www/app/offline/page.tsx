@@ -1,65 +1,83 @@
-"use client";
+'use client';
 
-import { WifiOff, RefreshCw, Shield } from "lucide-react";
+import { WifiOff, RefreshCw, Shield, Eye, Database } from 'lucide-react';
+import {
+  Empty,
+  EmptyMedia,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from '@/components/ui/empty';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardPanel } from '@/components/ui/card';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 export default function OfflinePage() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] gap-8 p-6 text-center">
-      <div className="w-24 h-24 rounded-full bg-surface-elevated flex items-center justify-center animate-[scaleIn_0.3s_ease-out]">
-        <WifiOff className="w-12 h-12 text-foreground/40" />
-      </div>
+    <Empty className="min-h-[70vh]">
+      <EmptyMedia variant="icon">
+        <WifiOff className="size-5" />
+      </EmptyMedia>
 
-      <div className="space-y-3 animate-[slideUp_0.3s_ease-out]">
-        <h1 className="text-2xl font-semibold">Hors connexion</h1>
-        <p className="text-foreground/60 max-w-sm">
-          La connexion internet est requise pour accéder aux sources
-          d&apos;entropie quantique et créer des sceaux authentifiés.
-        </p>
-      </div>
+      <EmptyHeader>
+        <EmptyTitle>Hors connexion</EmptyTitle>
+        <EmptyDescription>
+          La connexion internet est requise pour acceder aux sources
+          d&apos;entropie quantique et creer des sceaux authentifies.
+        </EmptyDescription>
+      </EmptyHeader>
 
-      <div className="bg-surface-elevated rounded-2xl p-5 max-w-sm w-full animate-[slideUp_0.3s_ease-out]">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-quantum/10 flex items-center justify-center">
-            <Shield className="w-5 h-5 text-quantum" />
-          </div>
-          <h2 className="font-medium text-left">Pourquoi cette limitation ?</h2>
-        </div>
-        <p className="text-sm text-foreground/60 text-left">
-          Les sceaux Veritas Q utilisent l&apos;entropie de générateurs
-          quantiques (QRNG) pour garantir l&apos;authenticité. Cette source
-          d&apos;aléatoire quantique nécessite une connexion aux serveurs QRNG.
-        </p>
-      </div>
+      <EmptyContent>
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Shield className="size-4 text-primary" />
+              Pourquoi cette limitation ?
+            </CardTitle>
+          </CardHeader>
+          <CardPanel>
+            <p className="text-sm text-muted-foreground">
+              Les sceaux Veritas Q utilisent l&apos;entropie de generateurs
+              quantiques (QRNG) pour garantir l&apos;authenticite. Cette source
+              d&apos;aleatoire quantique necessite une connexion aux serveurs QRNG.
+            </p>
+          </CardPanel>
+        </Card>
 
-      <div className="bg-surface rounded-xl p-4 max-w-sm w-full border border-border animate-[slideUp_0.3s_ease-out]">
-        <h3 className="font-medium mb-3 text-sm">Disponible hors ligne :</h3>
-        <ul className="text-sm text-foreground/60 space-y-2 text-left">
-          <li className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            Consulter l&apos;interface
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            Voir les sceaux en cache
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-foreground/20" />
-            Créer de nouveaux sceaux
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-foreground/20" />
-            Vérifier des médias
-          </li>
-        </ul>
-      </div>
+        <Alert variant="info" className="w-full">
+          <Eye className="size-4" />
+          <AlertTitle>Disponible hors ligne</AlertTitle>
+          <AlertDescription>
+            <ul className="mt-1 space-y-1.5">
+              <li className="flex items-center gap-2">
+                <span className="size-1.5 rounded-full bg-success shrink-0" />
+                Consulter l&apos;interface
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="size-1.5 rounded-full bg-success shrink-0" />
+                Voir les sceaux en cache
+              </li>
+              <li className="flex items-center gap-2">
+                <Database className="size-3 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">Creer de nouveaux sceaux</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Database className="size-3 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">Verifier des medias</span>
+              </li>
+            </ul>
+          </AlertDescription>
+        </Alert>
 
-      <button
-        onClick={() => window.location.reload()}
-        className="flex items-center gap-2 px-6 py-3 bg-quantum text-black rounded-full font-medium hover:bg-quantum-dim transition-colors animate-[slideUp_0.3s_ease-out] transition-transform active:scale-95"
-      >
-        <RefreshCw className="w-5 h-5" />
-        Réessayer la connexion
-      </button>
-    </div>
+        <Button
+          onClick={() => window.location.reload()}
+          className="gap-2"
+        >
+          <RefreshCw className="size-4" />
+          Reessayer la connexion
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }

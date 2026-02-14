@@ -4,12 +4,10 @@ import { useState, useCallback } from "react";
 import {
   Upload,
   Shield,
-  Loader2,
   FileImage,
   X,
-  AlertCircle,
-  Search,
   FileCheck,
+  Search,
 } from "lucide-react";
 import VerificationResult from "./VerificationResult";
 import {
@@ -18,6 +16,23 @@ import {
   isSealFile,
   type UnifiedVerificationResult,
 } from "@/lib/verification";
+import { Card, CardPanel } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+  AlertAction,
+} from "@/components/ui/alert";
+import {
+  Progress,
+  ProgressTrack,
+  ProgressIndicator,
+  ProgressLabel,
+} from "@/components/ui/progress";
+import { AlertCircle, ShieldX } from "lucide-react";
 
 type VerifyState =
   | "idle"
@@ -32,6 +47,12 @@ interface DroppedFile {
   file: File;
   preview?: string;
 }
+
+const STEP_PROGRESS: Record<string, number> = {
+  verifying: 40,
+  checking_c2pa: 60,
+  resolving: 80,
+};
 
 export default function Verifier() {
   const [state, setState] = useState<VerifyState>("idle");
@@ -69,13 +90,16 @@ export default function Verifier() {
     setIsDragOver(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
 
-    const files = Array.from(e.dataTransfer.files);
-    processFiles(files);
-  }, [processFiles]);
+      const files = Array.from(e.dataTransfer.files);
+      processFiles(files);
+    },
+    [processFiles],
+  );
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,7 +108,7 @@ export default function Verifier() {
         processFiles(files);
       }
     },
-    [processFiles]
+    [processFiles],
   );
 
   const verify = useCallback(async () => {
@@ -93,7 +117,6 @@ export default function Verifier() {
     setErrorMessage("");
     setResult(null);
 
-    // Update state based on verification path
     if (sealFile) {
       setState("verifying");
     } else if (isImageFile(mediaFile.file)) {
@@ -105,13 +128,11 @@ export default function Verifier() {
     try {
       const verificationResult = await verifyUnified(
         mediaFile.file,
-        sealFile?.file
+        sealFile?.file,
       );
 
-      // Update state for soft binding if we went that route
       if (verificationResult.method === "soft_binding") {
         setState("resolving");
-        // Small delay to show resolving state
         await new Promise((r) => setTimeout(r, 300));
       }
 
@@ -119,7 +140,7 @@ export default function Verifier() {
       setState("complete");
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : "Erreur de vérification"
+        err instanceof Error ? err.message : "Erreur de vérification",
       );
       setState("error");
     }
@@ -136,10 +157,8 @@ export default function Verifier() {
     setState("idle");
   }, [mediaFile]);
 
-  // Can verify with just media file (will try C2PA or soft binding)
   const canVerify = mediaFile !== null;
 
-  // Get status message for verification in progress
   const getStatusMessage = () => {
     switch (state) {
       case "verifying":
@@ -162,187 +181,246 @@ export default function Verifier() {
     }
   };
 
-  const isProcessing = ["verifying", "checking_c2pa", "resolving"].includes(state);
+  const isProcessing = ["verifying", "checking_c2pa", "resolving"].includes(
+    state,
+  );
 
+  // ── Result Display ──────────────────────────────────────────
+  if (state === "complete" && result) {
+    return (
+      <div className="w-full animate-slide-up">
+        <VerificationResult result={result} onReset={reset} />
+      </div>
+    );
+  }
+
+  // ── Error Display ───────────────────────────────────────────
+  if (state === "error") {
+    return (
+      <Card className="animate-slide-up">
+        <CardPanel className="flex flex-col items-center gap-4 py-8">
+          <div className="shield-failed">
+            <ShieldX className="size-16 text-destructive" />
+          </div>
+          <Alert variant="error" className="max-w-sm">
+            <AlertCircle />
+            <AlertTitle>Erreur de vérification</AlertTitle>
+            <AlertDescription>{errorMessage}</AlertDescription>
+            <AlertAction>
+              <Button variant="outline" size="sm" onClick={reset}>
+                Réessayer
+              </Button>
+            </AlertAction>
+          </Alert>
+        </CardPanel>
+      </Card>
+    );
+  }
+
+  // ── Processing State ────────────────────────────────────────
+  if (isProcessing) {
+    const status = getStatusMessage();
+    const progressValue = STEP_PROGRESS[state] ?? 20;
+
+    return (
+      <Card className="animate-fade-in">
+        <CardPanel className="flex flex-col items-center gap-6 py-10">
+          <div className="relative">
+            <Spinner className="size-12 text-primary" />
+            <div className="absolute inset-0 rounded-full animate-glow-pulse" />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-primary font-medium">{status.title}</p>
+            <p className="text-muted-foreground text-sm">{status.subtitle}</p>
+          </div>
+          <Progress value={progressValue} className="max-w-xs">
+            <ProgressLabel className="sr-only">
+              Progression de la vérification
+            </ProgressLabel>
+            <ProgressTrack className="h-2">
+              <ProgressIndicator className="bg-primary transition-all duration-700" />
+            </ProgressTrack>
+          </Progress>
+          <div className="flex gap-2">
+            {["Signature", "Hash", "Horodatage", "QRNG"].map((step, i) => (
+              <Badge
+                key={step}
+                variant={progressValue > i * 25 ? "default" : "outline"}
+                size="sm"
+              >
+                {step}
+              </Badge>
+            ))}
+          </div>
+        </CardPanel>
+      </Card>
+    );
+  }
+
+  // ── Upload / Drop Zone ──────────────────────────────────────
   return (
-    <div className="flex flex-col items-center gap-6 w-full">
-      {/* Result Display */}
-      {state === "complete" && result && (
-        <div className="w-full flex justify-center animate-[slideUp_0.3s_ease-out]">
-          <VerificationResult result={result} onReset={reset} />
+    <div className="w-full flex flex-col gap-4 animate-fade-in">
+      {/* Drop Zone Card */}
+      <Card
+        className={`transition-all duration-200 ${
+          isDragOver
+            ? "border-primary shadow-[0_0_20px_var(--quantum-glow)]"
+            : "hover:border-border-emphasis"
+        }`}
+      >
+        <CardPanel className="p-0">
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className="relative w-full aspect-[4/3] sm:aspect-video"
+          >
+            <input
+              type="file"
+              multiple
+              accept="image/*,video/*,audio/*,.veritas"
+              onChange={handleFileSelect}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              disabled={isProcessing}
+              aria-label="Sélectionner des fichiers à vérifier"
+            />
+
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
+              <div
+                className={`size-16 rounded-full flex items-center justify-center transition-colors ${
+                  isDragOver
+                    ? "bg-primary/20 quantum-glow-sm"
+                    : "bg-surface-2"
+                }`}
+              >
+                {isDragOver ? (
+                  <Shield className="size-8 text-primary" />
+                ) : (
+                  <Upload className="size-8 text-muted-foreground" />
+                )}
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-foreground">
+                  {isDragOver
+                    ? "Déposez les fichiers"
+                    : "Déposez des fichiers à vérifier"}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  ou cliquez pour parcourir
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2 mt-2">
+                <Badge variant="outline" size="sm">
+                  Image seule → C2PA / résolution
+                </Badge>
+                <Badge variant="outline" size="sm">
+                  Image + .veritas → vérification classique
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </CardPanel>
+      </Card>
+
+      {/* File indicators */}
+      {(mediaFile || sealFile) && (
+        <div className="space-y-2 animate-slide-up">
+          {mediaFile && (
+            <Card className="overflow-hidden">
+              <div className="flex items-center gap-3 p-3">
+                {mediaFile.preview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={mediaFile.preview}
+                    alt="Aperçu du fichier média"
+                    className="size-10 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="size-10 rounded-lg bg-surface-2 flex items-center justify-center">
+                    <FileImage className="size-5 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {mediaFile.file.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {(mediaFile.file.size / 1024).toFixed(1)} Ko
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setMediaFile(null)}
+                  aria-label="Retirer le fichier média"
+                >
+                  <X />
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {sealFile && (
+            <Card className="overflow-hidden">
+              <div className="flex items-center gap-3 p-3">
+                <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Shield className="size-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {sealFile.file.name}
+                  </p>
+                  <Badge variant="success" size="sm">
+                    Sceau Veritas
+                  </Badge>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setSealFile(null)}
+                  aria-label="Retirer le fichier sceau"
+                >
+                  <X />
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
-      {/* Error Display */}
-      {state === "error" && (
-        <div className="flex flex-col items-center gap-4 p-6 bg-red-500/10 rounded-2xl animate-[slideUp_0.3s_ease-out]">
-            <AlertCircle className="w-16 h-16 text-red-500" />
-            <h3 className="text-lg font-semibold text-red-500">Erreur</h3>
-            <p className="text-foreground/60 text-center max-w-sm">
-              {errorMessage}
+      {/* Verify button */}
+      {canVerify && state === "dropped" && (
+        <div className="flex flex-col items-center gap-3 animate-slide-up">
+          <Button size="xl" onClick={verify} className="quantum-glow-sm">
+            {sealFile ? (
+              <>
+                <FileCheck />
+                <span>Vérifier le sceau</span>
+              </>
+            ) : (
+              <>
+                <Search />
+                <span>Rechercher l&apos;authenticité</span>
+              </>
+            )}
+          </Button>
+
+          {/* Verification method hint */}
+          {!sealFile && isImageFile(mediaFile.file) && (
+            <p className="text-xs text-muted-foreground text-center">
+              Recherche de manifest C2PA intégré ou résolution par hash
+              perceptuel
             </p>
-            <button
-              onClick={reset}
-              className="mt-2 px-6 py-2 bg-surface-elevated hover:bg-surface-elevated/80 rounded-full border border-border transition-colors text-sm"
-            >
-              Réessayer
-            </button>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-      {/* Drop Zone / Verification UI */}
-      {state !== "complete" && state !== "error" && (
-        <div className="w-full animate-[fadeIn_0.3s_ease-out]">
-            {/* Drop Zone */}
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={`relative w-full aspect-[4/3] sm:aspect-video rounded-2xl border-2 border-dashed transition-all duration-200 ${
-                isDragOver
-                  ? "border-quantum bg-quantum/10"
-                  : "border-border bg-surface hover:border-foreground/30"
-              }`}
-            >
-              <input
-                type="file"
-                multiple
-                accept="image/*,video/*,audio/*,.veritas"
-                onChange={handleFileSelect}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                disabled={isProcessing}
-              />
-
-              {isProcessing ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                  <Loader2 className="w-12 h-12 text-quantum animate-spin" />
-                  <p className="text-quantum font-medium">
-                    {getStatusMessage().title}
-                  </p>
-                  <p className="text-foreground/60 text-sm">
-                    {getStatusMessage().subtitle}
-                  </p>
-                </div>
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
-                  <div
-                    className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${
-                      isDragOver ? "bg-quantum/20" : "bg-surface-elevated"
-                    }`}
-                  >
-                    {isDragOver ? (
-                      <Shield className="w-8 h-8 text-quantum" />
-                    ) : (
-                      <Upload className="w-8 h-8 text-foreground/60" />
-                    )}
-                  </div>
-                  <div className="text-center">
-                    <p className="font-medium text-foreground">
-                      {isDragOver
-                        ? "Déposez les fichiers"
-                        : "Déposez des fichiers à vérifier"}
-                    </p>
-                    <p className="text-sm text-foreground/60 mt-1">
-                      ou cliquez pour parcourir
-                    </p>
-                  </div>
-                  <div className="text-xs text-foreground/40 mt-2 text-center space-y-1">
-                    <p>Image seule : recherche C2PA ou résolution soft binding</p>
-                    <p>Image + .veritas : vérification classique</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* File indicators */}
-            {(mediaFile || sealFile) && !isProcessing && (
-              <div className="mt-4 space-y-2">
-                {mediaFile && (
-                  <div className="flex items-center gap-3 p-3 bg-surface-elevated rounded-lg animate-[slideInRight_0.3s_ease-out]">
-                    {mediaFile.preview ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={mediaFile.preview}
-                        alt="Aperçu"
-                        className="w-10 h-10 rounded object-cover"
-                      />
-                    ) : (
-                      <FileImage className="w-10 h-10 text-foreground/60 p-2 bg-surface rounded" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {mediaFile.file.name}
-                      </p>
-                      <p className="text-xs text-foreground/60">
-                        {(mediaFile.file.size / 1024).toFixed(1)} Ko
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setMediaFile(null)}
-                      className="p-1 hover:bg-surface rounded-full transition-colors"
-                    >
-                      <X className="w-4 h-4 text-foreground/60" />
-                    </button>
-                  </div>
-                )}
-
-                {sealFile && (
-                  <div className="flex items-center gap-3 p-3 bg-surface-elevated rounded-lg animate-[slideInRight_0.3s_ease-out]">
-                    <Shield className="w-10 h-10 text-quantum p-2 bg-quantum/10 rounded" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {sealFile.file.name}
-                      </p>
-                      <p className="text-xs text-quantum">Sceau Veritas</p>
-                    </div>
-                    <button
-                      onClick={() => setSealFile(null)}
-                      className="p-1 hover:bg-surface rounded-full transition-colors"
-                    >
-                      <X className="w-4 h-4 text-foreground/60" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Verify button */}
-            {canVerify && state === "dropped" && (
-              <div className="mt-6 flex flex-col items-center gap-3 animate-[slideUp_0.3s_ease-out]">
-                <button
-                  onClick={verify}
-                  className="flex items-center gap-2 px-8 py-3 bg-quantum text-black font-semibold rounded-full hover:bg-quantum-dim transition-colors quantum-glow-sm transition-transform active:scale-95"
-                >
-                  {sealFile ? (
-                    <>
-                      <FileCheck className="w-5 h-5" />
-                      <span>Vérifier le sceau</span>
-                    </>
-                  ) : (
-                    <>
-                      <Search className="w-5 h-5" />
-                      <span>Rechercher l&apos;authenticité</span>
-                    </>
-                  )}
-                </button>
-
-                {/* Verification method hint */}
-                {!sealFile && isImageFile(mediaFile.file) && (
-                  <p className="text-xs text-foreground/50 text-center">
-                    Recherche de manifest C2PA intégré ou résolution par hash perceptuel
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Missing file hint */}
-            {state === "dropped" && !canVerify && (
-              <p className="mt-4 text-center text-sm text-foreground/60 animate-[fadeIn_0.3s_ease-out]">
-                Ajoutez un fichier média à vérifier
-              </p>
-            )}
-          </div>
-        )}
+      {/* Missing file hint */}
+      {state === "dropped" && !canVerify && (
+        <p className="text-center text-sm text-muted-foreground animate-fade-in">
+          Ajoutez un fichier média à vérifier
+        </p>
+      )}
     </div>
   );
 }
