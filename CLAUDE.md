@@ -213,6 +213,10 @@ WEBAUTHN_ALLOW_ANY_PORT=   # Allow any port in origin matching (dev only)
 C2PA_SIGNING_KEY=          # Path to C2PA signing private key
 C2PA_SIGNING_CERT=         # Path to C2PA signing certificate
 
+# Clerk JWT auth (server auto-derives JWKS URL from publishable key)
+CLERK_PUBLISHABLE_KEY=     # Clerk publishable key (server uses this for JWT validation)
+CLERK_JWKS_URL=            # Or set JWKS URL directly (overrides publishable key)
+
 # Server config
 PORT=3000                  # Server listen port
 HOST=127.0.0.1             # Server listen address (0.0.0.0 for Docker)

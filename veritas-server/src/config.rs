@@ -2,6 +2,8 @@
 //!
 //! Handles loading configuration from environment variables with sensible defaults.
 
+use base64::engine::general_purpose::STANDARD_NO_PAD as BASE64;
+use base64::Engine;
 use std::net::SocketAddr;
 
 /// Server configuration loaded from environment variables
@@ -112,7 +114,15 @@ impl Config {
             .map(|v| v.to_lowercase() != "false")
             .unwrap_or(true);
 
-        let clerk_jwks_url = std::env::var("CLERK_JWKS_URL").ok();
+        let clerk_jwks_url = std::env::var("CLERK_JWKS_URL").ok().or_else(|| {
+            // Auto-derive JWKS URL from Clerk publishable key if available.
+            // The publishable key encodes the frontend API domain in base64:
+            //   pk_test_<base64(domain)>  or  pk_live_<base64(domain)>
+            let pk = std::env::var("CLERK_PUBLISHABLE_KEY")
+                .or_else(|_| std::env::var("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"))
+                .ok()?;
+            derive_jwks_url_from_publishable_key(&pk)
+        });
 
         let allow_mock_qrng = std::env::var("ALLOW_MOCK_QRNG")
             .map(|v| v.to_lowercase() == "true")
@@ -148,5 +158,85 @@ impl Config {
     /// Get socket address from config
     pub fn socket_addr(&self) -> SocketAddr {
         SocketAddr::from((self.host, self.port))
+    }
+}
+
+/// Derive the Clerk JWKS URL from a Clerk publishable key.
+///
+/// Clerk publishable keys encode the frontend API domain in base64:
+///   `pk_test_<base64(domain$)>` or `pk_live_<base64(domain$)>`
+///
+/// The JWKS URL is `https://<domain>/.well-known/jwks.json`.
+fn derive_jwks_url_from_publishable_key(pk: &str) -> Option<String> {
+    let encoded = pk
+        .strip_prefix("pk_test_")
+        .or_else(|| pk.strip_prefix("pk_live_"))?;
+
+    // Strip any trailing '=' padding — we use the no-pad decoder
+    let b64 = encoded.trim_end_matches('=');
+
+    if b64.is_empty() {
+        return None;
+    }
+
+    let decoded = BASE64.decode(b64).ok()?;
+    let raw = String::from_utf8(decoded).ok()?;
+
+    // Clerk appends a '$' terminator to the encoded domain
+    let domain = raw.trim_end_matches('$');
+
+    if domain.is_empty() {
+        return None;
+    }
+
+    let url = format!("https://{}/.well-known/jwks.json", domain);
+    tracing::info!("Derived CLERK_JWKS_URL from publishable key: {}", url);
+    Some(url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_derive_jwks_url_from_test_key() {
+        // pk_test_ with base64("above-treefrog-89.clerk.accounts.dev$")
+        let pk = "pk_test_YWJvdmUtdHJlZWZyb2ctODkuY2xlcmsuYWNjb3VudHMuZGV2JA";
+        let url = derive_jwks_url_from_publishable_key(pk).unwrap();
+        assert_eq!(
+            url,
+            "https://above-treefrog-89.clerk.accounts.dev/.well-known/jwks.json"
+        );
+    }
+
+    #[test]
+    fn test_derive_jwks_url_from_live_key() {
+        // pk_live_ prefix should also work
+        let pk = "pk_live_YWJvdmUtdHJlZWZyb2ctODkuY2xlcmsuYWNjb3VudHMuZGV2JA";
+        let url = derive_jwks_url_from_publishable_key(pk).unwrap();
+        assert_eq!(
+            url,
+            "https://above-treefrog-89.clerk.accounts.dev/.well-known/jwks.json"
+        );
+    }
+
+    #[test]
+    fn test_derive_jwks_url_invalid_prefix() {
+        assert!(derive_jwks_url_from_publishable_key("sk_test_abc").is_none());
+        assert!(derive_jwks_url_from_publishable_key("random").is_none());
+        assert!(derive_jwks_url_from_publishable_key("").is_none());
+    }
+
+    #[test]
+    fn test_derive_jwks_url_invalid_base64() {
+        assert!(derive_jwks_url_from_publishable_key("pk_test_!!!invalid!!!").is_none());
+    }
+
+    #[test]
+    fn test_default_config() {
+        let config = Config::default();
+        assert_eq!(config.port, 3000);
+        assert!(config.clerk_jwks_url.is_none());
+        assert!(config.allow_mock_qrng);
     }
 }

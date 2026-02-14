@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useUser, useAuth } from "@clerk/nextjs";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 3000;
 
 export interface SyncedUser {
   id: string;
@@ -27,11 +29,11 @@ interface UseUserSyncResult {
 }
 
 /**
- * Hook to synchronize Clerk user with backend database
+ * Hook to synchronize Clerk user with backend database.
  *
- * This hook automatically syncs the authenticated user's profile
- * to our backend database on first render. It uses the Clerk session
- * to authenticate API requests.
+ * Automatically syncs the authenticated user's profile to the backend
+ * on first render. Silently retries on transient network failures.
+ * The dashboard remains fully usable even if sync fails.
  */
 export function useUserSync(): UseUserSyncResult {
   const { user, isLoaded: isUserLoaded } = useUser();
@@ -40,6 +42,8 @@ export function useUserSync(): UseUserSyncResult {
   const [syncedUser, setSyncedUser] = useState<SyncedUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const retryCount = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const syncUser = useCallback(async () => {
     if (!user || !isUserLoaded || !isAuthLoaded) {
@@ -50,13 +54,11 @@ export function useUserSync(): UseUserSyncResult {
     setError(null);
 
     try {
-      // Get Clerk session token
       const token = await getToken();
       if (!token) {
         throw new Error("No authentication token available");
       }
 
-      // Prepare user data from Clerk
       const userData = {
         clerk_user_id: user.id,
         email: user.primaryEmailAddress?.emailAddress || "",
@@ -64,7 +66,6 @@ export function useUserSync(): UseUserSyncResult {
         avatar_url: user.imageUrl || null,
       };
 
-      // Sync with backend
       const response = await fetch(`${API_URL}/api/v1/users/sync`, {
         method: "POST",
         headers: {
@@ -83,26 +84,46 @@ export function useUserSync(): UseUserSyncResult {
 
       const data: SyncUserResponse = await response.json();
       setSyncedUser(data.user);
+      retryCount.current = 0;
 
-      // Log if new user was created
       if (data.created) {
         console.log("[useUserSync] New user created in database");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sync failed";
+      const isNetworkError =
+        message === "Failed to fetch" || message === "Load failed";
+
+      // Only log as warning for expected transient errors
+      if (isNetworkError) {
+        console.warn("[useUserSync] Backend unreachable, will retry");
+      } else {
+        console.warn("[useUserSync] Sync failed:", message);
+      }
+
       setError(message);
-      console.error("[useUserSync] Error:", message);
     } finally {
       setIsLoading(false);
     }
   }, [user, isUserLoaded, isAuthLoaded, getToken]);
 
-  // Auto-sync on mount when user is authenticated
+  // Auto-sync on mount when user is authenticated, with retry
   useEffect(() => {
     if (user && isUserLoaded && isAuthLoaded && !syncedUser && !isLoading) {
       syncUser();
     }
   }, [user, isUserLoaded, isAuthLoaded, syncedUser, isLoading, syncUser]);
+
+  // Retry on transient errors
+  useEffect(() => {
+    if (error && !syncedUser && retryCount.current < MAX_RETRIES) {
+      retryTimer.current = setTimeout(() => {
+        retryCount.current += 1;
+        syncUser();
+      }, RETRY_DELAY_MS);
+    }
+    return () => clearTimeout(retryTimer.current);
+  }, [error, syncedUser, syncUser]);
 
   return {
     syncedUser,
